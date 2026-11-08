@@ -13,6 +13,7 @@ QPushButton:pressed { background-color: #555555; border-top: 4px solid #333333; 
 QPushButton:disabled { background-color: #4A4A4A; color: #888888; border-top: 4px solid #606060; border-left: 4px solid #606060; border-right: 4px solid #333333; border-bottom: 4px solid #333333; }
 QPushButton#Primary { background-color: #7D7D7D; color: #E0E0E0; font-family: "Minecraft", "Segoe UI"; font-weight: normal; }
 QPushButton#Primary:hover { background-color: #8B8B8B; color: #FFFFA0; }
+QPushButton#ModsFolderButton { padding: 0px; }
 QPushButton#PlayHero { background-color: #3C8527; color: #FFFFFF; font-family: "Minecraft", "Segoe UI"; font-size: 22px; font-weight: normal; letter-spacing: 2px; padding: 12px 40px; border-radius: 0px; border-top: 4px solid #52A535; border-left: 4px solid #52A535; border-right: 4px solid #2A641C; border-bottom: 6px solid #1E4A13; }
 QPushButton#PlayHero:hover { background-color: #469B2E; border-top: 4px solid #63C741; border-left: 4px solid #63C741; }
 QPushButton#PlayHero:pressed { background-color: #2A641C; border-top: 6px solid #1E4A13; border-left: 4px solid #1E4A13; border-right: 4px solid #3C8527; border-bottom: 4px solid #3C8527; padding-top: 14px; padding-bottom: 10px; }

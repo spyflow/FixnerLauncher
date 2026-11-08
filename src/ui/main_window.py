@@ -9,8 +9,8 @@ import urllib.parse
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QUrl, Qt, Signal
-from PySide6.QtGui import QAction, QPainter, QPixmap, QPixmapCache
+from PySide6.QtCore import QSize, QUrl, Qt, Signal
+from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPainter, QPixmap, QPixmapCache
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFrame, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMainWindow, QMenu, QMessageBox, QPushButton,
@@ -470,14 +470,30 @@ class MainWindow(QMainWindow):
         self.hero_title = QLabel("MINECRAFT")
         self.hero_title.setObjectName("HeroTitle")
         hero_layout.addWidget(self.hero_title, alignment=Qt.AlignmentFlag.AlignHCenter)
-        self.hero_status = QLabel("Selecciona una instalacion local")
+        self.hero_status = QLabel("")
         self.hero_status.setObjectName("HeroSubtitle")
-        hero_layout.addWidget(self.hero_status, alignment=Qt.AlignmentFlag.AlignHCenter)
+        self.hero_status.setVisible(False)
+        selector_container = QWidget()
+        selector_container.setFixedSize(310, 46)
+        selector_row = QHBoxLayout(selector_container)
+        selector_row.setContentsMargins(0, 0, 0, 0)
+        selector_row.setSpacing(6)
         self.selector = QComboBox()
         self.selector.setObjectName("HeroSelector")
-        self.selector.setMinimumWidth(310)
+        self.selector.setFixedSize(310, 46)
         self.selector.currentIndexChanged.connect(self._selector_changed)
-        hero_layout.addWidget(self.selector, alignment=Qt.AlignmentFlag.AlignHCenter)
+        selector_row.addWidget(self.selector)
+        self.mods_folder_button = QPushButton()
+        self.mods_folder_button.setObjectName("ModsFolderButton")
+        self.mods_folder_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.mods_folder_button.setFixedSize(46, 46)
+        self.mods_folder_button.setIcon(self._build_folder_icon())
+        self.mods_folder_button.setIconSize(QSize(22, 22))
+        self.mods_folder_button.setToolTip("Abrir carpeta de mods de esta versión")
+        self.mods_folder_button.setVisible(False)
+        self.mods_folder_button.clicked.connect(self._open_selected_mods_folder)
+        selector_row.addWidget(self.mods_folder_button)
+        hero_layout.addWidget(selector_container, alignment=Qt.AlignmentFlag.AlignHCenter)
         self.play_button = QPushButton("▶   JUGAR")
         self.play_button.setObjectName("PlayHero")
         self.play_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -510,8 +526,8 @@ class MainWindow(QMainWindow):
         lower.addWidget(memory_panel, 1)
         actions = QFrame(objectName="Details")
         actions_layout = QVBoxLayout(actions)
-        self.detail_variant = QLabel("Sin instalacion seleccionada", objectName="Muted")
-        actions_layout.addWidget(self.detail_variant)
+        self.detail_variant = QLabel("", objectName="Muted")
+        self.detail_variant.setVisible(False)
         settings_data = load_json(LAUNCHER_SETTINGS_FILE, {})
         reopen_enabled = bool(settings_data.get("reopen_on_exit", True)) if isinstance(settings_data, dict) else True
         self.reopen_checkbox = QCheckBox("Reabrir launcher al cerrar el juego")
@@ -725,19 +741,52 @@ class MainWindow(QMainWindow):
         value = self.selector.currentData()
         return str(value) if value else ""
 
+    @staticmethod
+    def _build_folder_icon() -> QIcon:
+        """Dibuja un icono de carpeta pixel-art para el boton de mods."""
+        pixmap = QPixmap(22, 22)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.fillRect(2, 4, 8, 2, QColor("#F5C242"))
+        painter.fillRect(1, 6, 20, 13, QColor("#8C6210"))
+        painter.fillRect(2, 6, 18, 11, QColor("#E5A922"))
+        painter.fillRect(2, 8, 18, 9, QColor("#F5C242"))
+        painter.fillRect(2, 8, 18, 2, QColor("#FFE48F"))
+        painter.end()
+        return QIcon(pixmap)
+
+    def _open_selected_mods_folder(self) -> None:
+        version_id = self._selected_id()
+        entry = next((value for value in self.installed if value["id"] == version_id), None)
+        if not entry or entry["variant"] != "Sodium":
+            return
+        mods_dir = self.sodium.mods_dir_for(entry["base"])
+        if os.name == "nt":
+            os.startfile(str(mods_dir))
+        else:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(mods_dir)))
+
     def _selector_changed(self, _index: int) -> None:
         version_id = self._selected_id()
         entry = next((value for value in self.installed if value["id"] == version_id), None)
         if not entry:
             self.hero_title.setText("MINECRAFT")
-            self.detail_variant.setText("Sin instalacion seleccionada")
+            if hasattr(self, "mods_folder_button"):
+                self.mods_folder_button.setVisible(False)
+                self.selector.setFixedSize(310, 46)
             return
         self.hero_title.setText(f"MINECRAFT {entry['base']}")
-        self.hero_status.setText(f"{entry['variant']} · Instalacion local lista")
         if entry["variant"] == "Sodium":
-            self.detail_variant.setText(f"Variante: Sodium (Fabric)  ·  Mods: mods/{entry['base']}")
+            if hasattr(self, "mods_folder_button"):
+                self.selector.setFixedSize(258, 46)
+                self.mods_folder_button.setToolTip(
+                    f"Abrir carpeta de mods de Minecraft {entry['base']} (mods/{entry['base']})"
+                )
+                self.mods_folder_button.setVisible(True)
         else:
-            self.detail_variant.setText(f"Variante: {entry['variant']}  ·  ID: {entry['id']}")
+            if hasattr(self, "mods_folder_button"):
+                self.mods_folder_button.setVisible(False)
+                self.selector.setFixedSize(310, 46)
 
     def _version_selected(self, item: QListWidgetItem | None, _previous: QListWidgetItem | None) -> None:
         version_id = str(item.data(Qt.ItemDataRole.UserRole)) if item and item.data(Qt.ItemDataRole.UserRole) else ""
