@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, QEvent, QTimer
-from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPixmap
+from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPixmap, QPixmapCache
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
 from config.settings import APP_VERSION, LAUNCHER_SETTINGS_FILE, load_json, save_json
@@ -26,6 +26,10 @@ class AppController:
         self.monitor: GameCrashMonitorWorker | None = None
         self.game_pid: int | None = None
         self.ui_handed_off_to_tray = False
+
+        self.trim_timer = QTimer(app)
+        self.trim_timer.setInterval(1200)
+        self.trim_timer.timeout.connect(self._periodic_tray_trim)
 
         settings_data = load_json(LAUNCHER_SETTINGS_FILE, {})
         self.reopen_on_exit = (
@@ -103,8 +107,30 @@ class AppController:
             QSystemTrayIcon.MessageIcon.Information,
             2500,
         )
+        QTimer.singleShot(50, self._release_window_to_tray)
+
+    def _release_window_to_tray(self) -> None:
+        """Destruye los widgets de la ventana cuando pasa a bandeja y compacta la RAM a ~2 MB."""
+        if self.window:
+            if self.window.worker and self.window.worker.isRunning():
+                self._trim_os_working_set()
+                return
+            window = self.window
+            self.window = None
+            window.destroy_for_handoff()
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        QPixmapCache.clear()
+        gc.collect()
+        self._trim_os_working_set()
+        QTimer.singleShot(350, self._trim_os_working_set)
+        if not self.trim_timer.isActive():
+            self.trim_timer.start()
+
+    def _periodic_tray_trim(self) -> None:
+        self._trim_os_working_set()
 
     def _quit(self) -> None:
+        self.trim_timer.stop()
         if self.monitor and self.monitor.isRunning():
             self.monitor.requestInterruption()
         self.tray.hide()
@@ -121,6 +147,9 @@ class AppController:
         self.window.show()
         self.window.raise_()
         self.window.activateWindow()
+        QTimer.singleShot(600, self._trim_os_working_set)
+        if not self.trim_timer.isActive():
+            self.trim_timer.start()
 
     def on_game_started(self, _version: str, _username: str, pid: int) -> None:
         self.logger.info("Monitor iniciado para Minecraft PID %s", pid)
@@ -136,12 +165,7 @@ class AppController:
         if self.game_pid != pid or not psutil.pid_exists(pid):
             return
         self.ui_handed_off_to_tray = True
-        if self.window:
-            window = self.window
-            self.window = None
-            window.destroy_for_handoff()
-            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-            gc.collect()
+        self._release_window_to_tray()
         self._detach_windows_console()
         self.status_action.setText("Estado: Minecraft ejecutandose")
 
@@ -191,3 +215,28 @@ class AppController:
             import ctypes
 
             ctypes.windll.kernel32.FreeConsole()
+
+    @staticmethod
+    def _trim_os_working_set() -> None:
+        """Compacta el heap C y recorta el Working Set en Windows (~1.5 - 2 MB en el Administrador de tareas)."""
+        import sys
+
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+
+            try:
+                ctypes.cdll.msvcrt._heapmin()
+            except Exception:
+                pass
+            handle = ctypes.c_void_p(-1)
+            ctypes.windll.psapi.EmptyWorkingSet(handle)
+            ctypes.windll.kernel32.SetProcessWorkingSetSizeEx(
+                handle,
+                ctypes.c_size_t(-1),
+                ctypes.c_size_t(-1),
+                0,
+            )
+        except Exception:
+            pass

@@ -10,14 +10,12 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QUrl, Qt, Signal
-from PySide6.QtGui import QAction, QPainter, QPixmap
+from PySide6.QtGui import QAction, QPainter, QPixmap, QPixmapCache
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFrame, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMainWindow, QMenu, QMessageBox, QPushButton,
     QProgressBar, QSpinBox, QVBoxLayout, QWidget,
 )
-from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWebEngineCore import QWebEngineScript
 
 from core.java_manager import JavaManager
 from core.auth_manager import AuthManager
@@ -42,10 +40,14 @@ class MicrosoftLoginDialog(QDialog):
 
     login_completed = Signal(object)
 
-    def __init__(self, auth: AuthManager, parent: QWidget) -> None:
+    def __init__(self, auth: AuthManager, parent: QWidget | None = None) -> None:
         from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
+        from PySide6.QtWebEngineWidgets import QWebEngineView
 
-        super().__init__(parent)
+        # Inicializar sin widget padre directo evita que QWebEngineView fuerce a Qt
+        # a destruir y recrear el HWND nativo de MainWindow (parpadeo/cierre de 1s).
+        super().__init__(None)
+        self.setWindowModality(Qt.WindowModality.ApplicationModal)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.auth = auth
         self.client_id = MICROSOFT_CLIENT_ID
@@ -54,6 +56,12 @@ class MicrosoftLoginDialog(QDialog):
 
         self.setWindowTitle("Iniciar sesion con Microsoft")
         self.resize(760, 640)
+        if parent is not None:
+            parent_geo = parent.frameGeometry()
+            self.move(
+                parent_geo.center().x() - self.width() // 2,
+                parent_geo.center().y() - self.height() // 2,
+            )
         layout = QVBoxLayout(self)
         self.status = QLabel("Preparando inicio de sesion...", objectName="Muted")
         layout.addWidget(self.status)
@@ -79,6 +87,8 @@ class MicrosoftLoginDialog(QDialog):
 
     def _disable_passkey_prompt(self) -> None:
         """Evita que WebAuthn abra el popup nativo de huella/PIN/passkey."""
+        from PySide6.QtWebEngineCore import QWebEngineScript
+
         script = QWebEngineScript()
         script.setName("disable-fixner-passkeys")
         script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
@@ -449,6 +459,7 @@ class MainWindow(QMainWindow):
 
         image_path = get_resource_path("launcherb.jpg")
         hero = ImageHero(image_path)
+        self.hero_frame = hero
         hero.setMinimumHeight(430)
         hero_layout = QVBoxLayout(hero)
         hero_layout.setContentsMargins(58, 42, 58, 42)
@@ -962,8 +973,11 @@ class MainWindow(QMainWindow):
             self.reopen_checkbox.blockSignals(False)
 
     def destroy_for_handoff(self) -> None:
-        """Destruye la ventana al quedar Minecraft bajo control del tray."""
+        """Destruye la ventana y sus pixmaps al pasar a modo bandeja."""
         self._destroying_for_handoff = True
+        if hasattr(self, "hero_frame") and self.hero_frame is not None:
+            self.hero_frame.image = QPixmap()
+        QPixmapCache.clear()
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.close()
 

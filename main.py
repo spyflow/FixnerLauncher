@@ -112,9 +112,11 @@ def main() -> int:
         action = args.action or "gui"
         if action == "gui":
             _configure_qtwebengine_flags()
+            from PySide6.QtCore import QCoreApplication, Qt
             from PySide6.QtGui import QFont, QFontDatabase
             from PySide6.QtWidgets import QApplication
             from src.controller import AppController
+            QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts, True)
             app = QApplication(sys.argv)
             app.setApplicationVersion(APP_VERSION)
             app.setWindowIcon(AppController._build_tray_icon())
