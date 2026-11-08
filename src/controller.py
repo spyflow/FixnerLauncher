@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, QEvent, QTimer
-from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
+from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
 from config.settings import APP_VERSION, LAUNCHER_SETTINGS_FILE, load_json, save_json
@@ -36,20 +36,28 @@ class AppController:
 
         self.tray = QSystemTrayIcon(self._build_tray_icon(), app)
         self.tray.activated.connect(self._tray_activated)
+        mc_font = QFont("Minecraft", 10)
         menu = QMenu()
+        menu.setFont(mc_font)
         open_action = QAction("Abrir FixnerLauncher", menu)
+        open_action.setFont(mc_font)
         open_action.triggered.connect(self.open_ui)
         menu.addAction(open_action)
         self.reopen_action = QAction("Reabrir launcher al cerrar el juego", menu)
+        self.reopen_action.setFont(mc_font)
         self.reopen_action.setCheckable(True)
         self.reopen_action.setChecked(self.reopen_on_exit)
         self.reopen_action.toggled.connect(self._set_reopen_on_exit)
         menu.addAction(self.reopen_action)
         self.status_action = QAction("Estado: listo", menu)
+        self.status_action.setFont(mc_font)
         self.status_action.setEnabled(False)
         menu.addAction(self.status_action)
         menu.addSeparator()
-        menu.addAction("Salir", self._quit)
+        quit_action = QAction("Salir", menu)
+        quit_action.setFont(mc_font)
+        quit_action.triggered.connect(self._quit)
+        menu.addAction(quit_action)
         self.tray.setContextMenu(menu)
         self.tray.setToolTip(f"FixnerLauncher v{APP_VERSION}")
         self.tray.show()
