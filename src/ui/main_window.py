@@ -760,7 +760,7 @@ class MainWindow(QMainWindow):
         entry = next((value for value in self.installed if value["id"] == version_id), None)
         if not entry or entry["variant"] != "Sodium":
             return
-        mods_dir = self.sodium.mods_dir_for(entry["base"])
+        mods_dir = self.sodium.get_version_mods_directory(entry["base"])
         if os.name == "nt":
             os.startfile(str(mods_dir))
         else:
