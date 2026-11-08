@@ -17,6 +17,10 @@ QPushButton:disabled { background-color: #4A4A4A; color: #888888; border-top: 4p
 QPushButton#Primary { background-color: #7D7D7D; color: #E0E0E0; font-family: "Minecraft", "Segoe UI"; font-weight: normal; }
 QPushButton#Primary:hover { background-color: #8B8B8B; color: #FFFFA0; }
 QPushButton#ModsFolderButton { padding: 0px; }
+QPushButton#UpdateButton { background-color: #3C8527; color: #FFFFFF; font-family: "Minecraft", "Segoe UI"; font-size: 13px; border-top: 4px solid #63C741; border-left: 4px solid #63C741; border-right: 4px solid #2A641C; border-bottom: 4px solid #1E4A13; }
+QPushButton#UpdateButton:hover { background-color: #469B2E; color: #FFFFA0; border-top: 4px solid #7AE856; border-left: 4px solid #7AE856; }
+QPushButton#UpdateButton:pressed { background-color: #2A641C; border-top: 4px solid #1E4A13; border-left: 4px solid #1E4A13; border-right: 4px solid #3C8527; border-bottom: 4px solid #3C8527; }
+QTextEdit#ReleaseNotesBox { background: #192122; color: #E0E0E0; border: 2px solid #394244; padding: 10px; font-family: "Segoe UI", Arial, sans-serif; font-size: 13px; }
 QPushButton#TitleBarButton, QPushButton#TitleBarCloseButton { background-color: #11191A; color: #F2F4F7; border: none; border-radius: 0px; padding: 0px; }
 QPushButton#TitleBarButton:hover { background-color: #242C2D; color: #FFFFFF; border: none; }
 QPushButton#TitleBarButton:pressed { background-color: #323C3E; color: #FFFFFF; border: none; padding: 0px; }

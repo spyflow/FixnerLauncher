@@ -14,7 +14,7 @@ from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPainter, QP
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFrame, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMainWindow, QMenu, QMessageBox, QPushButton,
-    QProgressBar, QSpinBox, QVBoxLayout, QWidget,
+    QProgressBar, QSizePolicy, QSpinBox, QTextEdit, QVBoxLayout, QWidget,
 )
 
 from core.java_manager import JavaManager
@@ -23,6 +23,7 @@ from core.minecraft_manager import MinecraftManager
 from core.optifine_manager import OptiFineManager
 from core.sodium_manager import SodiumManager
 from core.runner import MinecraftRunner
+from core.updater import ReleaseInfo, SemVer, UpdateManager
 from config.settings import (
     APP_VERSION,
     LAUNCHER_SETTINGS_FILE,
@@ -515,6 +516,108 @@ class WindowTitleBar(QFrame):
         super().mouseDoubleClickEvent(event)
 
 
+class UpdateDialog(QDialog):
+    """Modal de actualizacion del launcher con notas de version y barra de progreso."""
+
+    install_triggered = Signal(object)
+    progress_changed = Signal(str, float)
+
+    def __init__(
+        self,
+        updater: UpdateManager,
+        release: ReleaseInfo,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.updater = updater
+        self.release = release
+        self.worker: TaskThread | None = None
+        self.progress_changed.connect(self._update_progress_ui)
+        self.setWindowTitle(f"Actualizacion disponible · v{release.version}")
+        self.setMinimumSize(580, 440)
+        _apply_windows_titlebar_color(self)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+
+        channel_tag = "PRE-RELEASE (BETA)" if release.is_prerelease else "VERSION ESTABLE"
+        badge_color = "#F5C242" if release.is_prerelease else "#63C741"
+        header = QLabel(
+            f"<span style='color:{badge_color};font-weight:800;'>[{channel_tag}]</span> "
+            f"<b>FixnerLauncher v{release.version}</b> "
+            f"<span style='color:#A7ADB0;'>(instalada actualmente: v{APP_VERSION})</span>"
+        )
+        header.setStyleSheet("font-size: 15px;")
+        layout.addWidget(header)
+
+        layout.addWidget(QLabel("Notas de la version:", objectName="Muted"))
+        self.notes_box = QTextEdit()
+        self.notes_box.setObjectName("ReleaseNotesBox")
+        self.notes_box.setReadOnly(True)
+        self.notes_box.setMarkdown(release.body)
+        layout.addWidget(self.notes_box, 1)
+
+        self.status_label = QLabel(
+            f"Instalador: {release.asset_name or 'Enlace directo a GitHub Releases'}",
+            objectName="Muted",
+        )
+        layout.addWidget(self.status_label)
+
+        self.progress = QProgressBar()
+        self.progress.setTextVisible(False)
+        self.progress.setFixedHeight(8)
+        self.progress.setVisible(False)
+        layout.addWidget(self.progress)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch(1)
+        self.later_btn = QPushButton("Mas tarde")
+        self.later_btn.clicked.connect(self.reject)
+        btn_row.addWidget(self.later_btn)
+
+        self.install_btn = QPushButton("⬆  Actualizar ahora")
+        self.install_btn.setObjectName("UpdateButton")
+        self.install_btn.clicked.connect(self._start_update)
+        btn_row.addWidget(self.install_btn)
+        layout.addLayout(btn_row)
+
+    def _start_update(self) -> None:
+        if not self.release.download_url:
+            QDesktopServices.openUrl(QUrl(self.release.html_url))
+            self.accept()
+            return
+        self.install_btn.setEnabled(False)
+        self.later_btn.setEnabled(False)
+        self.progress.setVisible(True)
+        self.progress.setValue(0)
+        self.worker = TaskThread(
+            self.updater.download_update,
+            self.release,
+            lambda text, pct: self.progress_changed.emit(text, pct),
+        )
+        self.worker.succeeded.connect(self._download_succeeded)
+        self.worker.failed.connect(self._download_failed)
+        self.worker.start()
+
+    def _update_progress_ui(self, text: str, pct: float) -> None:
+        self.status_label.setText(text)
+        self.progress.setValue(int(min(100, pct)))
+
+    def _download_succeeded(self, installer_path: object) -> None:
+        if isinstance(installer_path, Path):
+            self.status_label.setText("Ejecutando instalador y reiniciando FixnerLauncher...")
+            self.progress.setValue(100)
+            self.install_triggered.emit(installer_path)
+            self.accept()
+
+    def _download_failed(self, error: str) -> None:
+        self.install_btn.setEnabled(True)
+        self.later_btn.setEnabled(True)
+        self.progress.setVisible(False)
+        self.status_label.setText(f"Error al descargar: {error}")
+        QMessageBox.critical(self, "Error de actualizacion", error)
+
+
 class MainWindow(QMainWindow):
     """Launcher centrado en las instalaciones locales del usuario."""
 
@@ -522,6 +625,8 @@ class MainWindow(QMainWindow):
     progress_changed = Signal(str, float)
     minimized_to_tray = Signal()
     reopen_on_exit_changed = Signal(bool)
+    include_beta_changed = Signal(bool)
+    quit_for_update_requested = Signal()
 
     def __init__(self, game_directory: Path, logger: logging.Logger) -> None:
         super().__init__()
@@ -533,6 +638,9 @@ class MainWindow(QMainWindow):
         java_mgr = JavaManager(game_directory, logger)
         self.optifine = OptiFineManager(game_directory, self.manager, java_mgr, logger)
         self.sodium = SodiumManager(game_directory, self.manager, java_mgr, logger)
+        self.updater = UpdateManager(game_directory, logger)
+        self.available_update: ReleaseInfo | None = None
+        self._update_check_worker: TaskThread | None = None
         self.installed: list[dict[str, str]] = []
         self.worker: TaskThread | None = None
         self._installing_version: str = ""
@@ -551,6 +659,7 @@ class MainWindow(QMainWindow):
         self.progress_changed.connect(self._show_progress)
         self.refresh_library()
         self._load_saved_account()
+        self.check_for_updates_async(manual=False)
 
     def _build_ui(self) -> None:
         self._build_hero_ui()
@@ -574,6 +683,12 @@ class MainWindow(QMainWindow):
         topbar.addStretch()
         self.library_count = QLabel("", objectName="Muted")
         topbar.addWidget(self.library_count)
+        self.update_button = QPushButton("")
+        self.update_button.setObjectName("UpdateButton")
+        self.update_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.update_button.setVisible(False)
+        self.update_button.clicked.connect(self._open_update_dialog)
+        topbar.addWidget(self.update_button)
         self.add_button = QPushButton("＋  Agregar")
         self.add_button.setObjectName("Primary")
         self._add_menu()
@@ -656,10 +771,20 @@ class MainWindow(QMainWindow):
         self.detail_variant.setVisible(False)
         settings_data = load_json(LAUNCHER_SETTINGS_FILE, {})
         reopen_enabled = bool(settings_data.get("reopen_on_exit", True)) if isinstance(settings_data, dict) else True
+        default_beta = bool(SemVer.parse(APP_VERSION) and SemVer.parse(APP_VERSION).is_prerelease)
+        beta_enabled = (
+            bool(settings_data.get("include_beta_updates", default_beta))
+            if isinstance(settings_data, dict)
+            else default_beta
+        )
         self.reopen_checkbox = QCheckBox("Reabrir launcher al cerrar el juego")
         self.reopen_checkbox.setChecked(reopen_enabled)
         self.reopen_checkbox.toggled.connect(self._on_reopen_toggled)
         actions_layout.addWidget(self.reopen_checkbox)
+        self.beta_updates_checkbox = QCheckBox("Recibir actualizaciones Beta (Pre-release)")
+        self.beta_updates_checkbox.setChecked(beta_enabled)
+        self.beta_updates_checkbox.toggled.connect(self._on_beta_updates_toggled)
+        actions_layout.addWidget(self.beta_updates_checkbox)
         self.remove_button = QPushButton("Eliminar seleccionada")
         self.remove_button.setAttribute(Qt.WidgetAttribute.WA_AlwaysShowToolTips, True)
         self.remove_button.clicked.connect(self._remove_selected)
@@ -667,8 +792,15 @@ class MainWindow(QMainWindow):
         lower.addWidget(actions, 1)
         root_layout.addLayout(lower)
         self.status = QLabel("Listo", objectName="Muted")
+        self.status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.status.setFixedHeight(20)
         root_layout.addWidget(self.status)
         self.progress = QProgressBar()
+        self.progress.setTextVisible(False)
+        self.progress.setFixedHeight(8)
+        progress_policy = self.progress.sizePolicy()
+        progress_policy.setRetainSizeWhenHidden(True)
+        self.progress.setSizePolicy(progress_policy)
         self.progress.setVisible(False)
         root_layout.addWidget(self.progress)
         self.search = QLineEdit()
@@ -1186,6 +1318,76 @@ class MainWindow(QMainWindow):
             self.reopen_checkbox.blockSignals(True)
             self.reopen_checkbox.setChecked(bool(checked))
             self.reopen_checkbox.blockSignals(False)
+
+    def _on_beta_updates_toggled(self, checked: bool) -> None:
+        settings_data = load_json(LAUNCHER_SETTINGS_FILE, {})
+        if not isinstance(settings_data, dict):
+            settings_data = {}
+        settings_data["include_beta_updates"] = bool(checked)
+        save_json(LAUNCHER_SETTINGS_FILE, settings_data)
+        self.include_beta_changed.emit(bool(checked))
+        self.check_for_updates_async(manual=False)
+
+    def set_beta_checkbox(self, checked: bool) -> None:
+        if hasattr(self, "beta_updates_checkbox"):
+            self.beta_updates_checkbox.blockSignals(True)
+            self.beta_updates_checkbox.setChecked(bool(checked))
+            self.beta_updates_checkbox.blockSignals(False)
+
+    def check_for_updates_async(self, manual: bool = False) -> None:
+        """Consulta en segundo plano si existe una version superior en GitHub Releases."""
+        if self._update_check_worker and self._update_check_worker.isRunning():
+            return
+        include_beta = (
+            self.beta_updates_checkbox.isChecked()
+            if hasattr(self, "beta_updates_checkbox")
+            else False
+        )
+        self._update_check_worker = TaskThread(
+            self.updater.check_for_updates,
+            APP_VERSION,
+            include_beta,
+        )
+        self._update_check_worker.succeeded.connect(
+            lambda result: self._on_update_check_done(result, manual)
+        )
+        self._update_check_worker.start()
+
+    def _on_update_check_done(self, result: object, manual: bool = False) -> None:
+        if isinstance(result, ReleaseInfo):
+            self.available_update = result
+            channel_suffix = " [BETA]" if result.is_prerelease else ""
+            if hasattr(self, "update_button"):
+                self.update_button.setText(f"⬆  Actualizar a v{result.version}{channel_suffix}")
+                self.update_button.setToolTip(
+                    f"Nueva version disponible: FixnerLauncher v{result.version}{channel_suffix}. Haz clic para ver cambios e instalar."
+                )
+                self.update_button.setVisible(True)
+            self.status.setText(f"Nueva actualizacion disponible: v{result.version}{channel_suffix}")
+            if manual:
+                self._open_update_dialog()
+        else:
+            self.available_update = None
+            if hasattr(self, "update_button"):
+                self.update_button.setVisible(False)
+            if manual:
+                QMessageBox.information(
+                    self,
+                    "Actualizaciones",
+                    f"Ya tienes la version mas reciente instalada (v{APP_VERSION}).",
+                )
+
+    def _open_update_dialog(self) -> None:
+        if not self.available_update:
+            return
+        dialog = UpdateDialog(self.updater, self.available_update, self)
+        dialog.install_triggered.connect(self._apply_update_installer)
+        dialog.exec()
+
+    def _apply_update_installer(self, installer_path: object) -> None:
+        if isinstance(installer_path, Path):
+            self.updater.launch_installer(installer_path)
+            self.quit_for_update_requested.emit()
 
     def destroy_for_handoff(self) -> None:
         """Destruye la ventana y sus pixmaps al pasar a modo bandeja."""

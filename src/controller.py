@@ -11,6 +11,7 @@ from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPixmap, QPix
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
 from config.settings import APP_VERSION, LAUNCHER_SETTINGS_FILE, load_json, save_json
+from core.updater import SemVer
 from src.ui.main_window import MainWindow
 from src.workers.tasks import GameCrashMonitorWorker
 
@@ -37,6 +38,12 @@ class AppController:
             if isinstance(settings_data, dict)
             else True
         )
+        default_beta = bool(SemVer.parse(APP_VERSION) and SemVer.parse(APP_VERSION).is_prerelease)
+        self.include_beta_updates = (
+            bool(settings_data.get("include_beta_updates", default_beta))
+            if isinstance(settings_data, dict)
+            else default_beta
+        )
 
         self.tray = QSystemTrayIcon(self._build_tray_icon(), app)
         self.tray.activated.connect(self._tray_activated)
@@ -47,6 +54,16 @@ class AppController:
         open_action.setFont(mc_font)
         open_action.triggered.connect(self.open_ui)
         menu.addAction(open_action)
+        check_updates_action = QAction("Buscar actualizaciones", menu)
+        check_updates_action.setFont(mc_font)
+        check_updates_action.triggered.connect(self._check_updates_from_tray)
+        menu.addAction(check_updates_action)
+        self.beta_action = QAction("Recibir actualizaciones Beta (Pre-release)", menu)
+        self.beta_action.setFont(mc_font)
+        self.beta_action.setCheckable(True)
+        self.beta_action.setChecked(self.include_beta_updates)
+        self.beta_action.toggled.connect(self._set_include_beta_updates)
+        menu.addAction(self.beta_action)
         self.reopen_action = QAction("Reabrir launcher al cerrar el juego", menu)
         self.reopen_action.setFont(mc_font)
         self.reopen_action.setCheckable(True)
@@ -100,6 +117,25 @@ class AppController:
         if self.window:
             self.window.set_reopen_checkbox(self.reopen_on_exit)
 
+    def _set_include_beta_updates(self, checked: bool) -> None:
+        self.include_beta_updates = bool(checked)
+        settings_data = load_json(LAUNCHER_SETTINGS_FILE, {})
+        if not isinstance(settings_data, dict):
+            settings_data = {}
+        settings_data["include_beta_updates"] = self.include_beta_updates
+        save_json(LAUNCHER_SETTINGS_FILE, settings_data)
+        self.beta_action.blockSignals(True)
+        self.beta_action.setChecked(self.include_beta_updates)
+        self.beta_action.blockSignals(False)
+        if self.window:
+            self.window.set_beta_checkbox(self.include_beta_updates)
+            self.window.check_for_updates_async(manual=False)
+
+    def _check_updates_from_tray(self) -> None:
+        self.open_ui()
+        if self.window:
+            self.window.check_for_updates_async(manual=True)
+
     def _on_window_minimized_to_tray(self) -> None:
         self.tray.showMessage(
             "FixnerLauncher",
@@ -142,7 +178,10 @@ class AppController:
             self.window.launch_requested.connect(self.on_game_started)
             self.window.minimized_to_tray.connect(self._on_window_minimized_to_tray)
             self.window.reopen_on_exit_changed.connect(self._set_reopen_on_exit)
+            self.window.include_beta_changed.connect(self._set_include_beta_updates)
+            self.window.quit_for_update_requested.connect(self._quit)
             self.window.set_reopen_checkbox(self.reopen_on_exit)
+            self.window.set_beta_checkbox(self.include_beta_updates)
         self.window.showNormal()
         self.window.show()
         self.window.raise_()
