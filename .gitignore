@@ -1,0 +1,6 @@
+ppsoul.key
+build/
+dist/
+installer_output/
+__pycache__/
+FixnerLauncher.spec

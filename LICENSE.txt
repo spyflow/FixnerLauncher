@@ -1,0 +1,121 @@
+================================================================================
+              TERMINOS DE USO Y ACUERDO DE LICENCIA DE USUARIO FINAL
+                                FIXNERLAUNCHER
+================================================================================
+
+Autor y Desarrollador: Spyflow
+Producto: FixnerLauncher
+
+IMPORTANTE: LEA ATENTAMENTE ESTOS TERMINOS DE USO ANTES DE INSTALAR O UTILIZAR
+FIXNERLAUNCHER. AL MARCAR LA CASILLA "ACEPTO EL ACUERDO" E INSTALAR O UTILIZAR
+ESTE SOFTWARE, USTED ACEPTA QUEDAR VINCULADO LEGALMENTE POR LAS CONDICIONES
+ESTABLECIDAS A CONTINUACION. SI NO ESTA DE ACUERDO CON ALGUNO DE ESTOS TERMINOS,
+NO INSTALE NI UTILICE ESTE SOFTWARE.
+
+--------------------------------------------------------------------------------
+1. AVISO DE NO AFILIACION Y PROPIEDAD INTELECTUAL DE TERCEROS
+--------------------------------------------------------------------------------
+NO ES UN PRODUCTO OFICIAL DE MINECRAFT. NO ESTA APROBADO NI ASOCIADO CON MOJANG
+NI MICROSOFT. ("NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED
+WITH MOJANG OR MICROSOFT.")
+
+- "Minecraft", el logotipo de Minecraft, "Mojang" y todos los recursos, activos,
+  marcas comerciales y derechos de autor asociados con el juego son propiedad
+  exclusiva de Mojang Synergies AB, Microsoft Corporation o sus respectivos
+  licenciantes. Todo lo que pertenece a Mojang y Microsoft es unica y
+  exclusivamente suyo.
+- "OptiFine" es una marca y software independiente propiedad de su respectivo
+  autor (sp614x).
+- FixnerLauncher es una herramienta de lanzamiento independiente desarrollada
+  por Spyflow. Este software no modifica, piratea ni comercializa activos
+  propietarios de Mojang Synergies AB ni elude las comprobaciones de licencia
+  en servidores en linea. El usuario es responsable de contar con una licencia
+  valida de Minecraft Java Edition para acceder a funciones y servidores
+  oficiales en linea, asi como de cumplir con el EULA oficial de Minecraft
+  (https://www.minecraft.net/eula) y los Terminos de Servicio de Microsoft.
+
+--------------------------------------------------------------------------------
+2. CONCESION DE LICENCIA Y RESTRICCIONES DE USO
+--------------------------------------------------------------------------------
+Spyflow otorga al usuario una licencia personal, gratuita, revocable, no
+exclusiva e intransferible para instalar y ejecutar FixnerLauncher con fines
+personales y no comerciales.
+
+Queda estrictamente prohibido:
+a) Vender, alquilar, sublicenciar o comercializar este software sin autorizacion
+   expresa y por escrito de Spyflow.
+b) Utilizar el software para distribuir malware, realizar ataques informaticos,
+   infringir derechos de propiedad intelectual de terceros o vulnerar leyes
+   locales, estatales, nacionales o internacionales.
+c) Suplantar la autoria original de Spyflow o eliminar los avisos legales y de
+   derechos de autor incluidos en el programa.
+
+--------------------------------------------------------------------------------
+3. PRIVACIDAD, PROTECCION DE DATOS Y SEGURIDAD (GDPR / CCPA / LGPD)
+--------------------------------------------------------------------------------
+En cumplimiento con las normativas internacionales de privacidad (incluyendo el
+Reglamento General de Proteccion de Datos de la Union Europea - GDPR, la Ley de
+Privacidad del Consumidor de California - CCPA/CPRA, la LGPD de Brasil y leyes
+equivalentes en America Latina y resto del mundo):
+
+a) Cero Recopilacion Externa: FixnerLauncher NO posee servidores de telemetria
+   propios ni recopila, almacena, transmite ni vende informacion personal,
+   contrasenas ni credenciales del usuario a Spyflow ni a terceros.
+b) Autenticacion Directa: El inicio de sesion con cuentas Microsoft se realiza
+   exclusivamente mediante conexion directa y segura (HTTPS) entre el equipo del
+   usuario y los servidores oficiales de Microsoft Corporation / Xbox Live /
+   Minecraft Services.
+c) Almacenamiento Cifrado Local: Los tokens de sesion se guardan unicamente en
+   el almacenamiento seguro cifrado del sistema operativo del propio usuario
+   (Windows Credential Manager) y los archivos de juego se alojan localmente en
+   el directorio aislado "%APPDATA%\.fixnerlauncher".
+
+--------------------------------------------------------------------------------
+4. EXCLUSION DE GARANTIAS ("TAL CUAL" / "AS IS")
+--------------------------------------------------------------------------------
+EN LA MAXIMA MEDIDA PERMITIDA POR LA LEGISLACION APLICABLE EN SU PAIS, ESTADO O
+JURISDICCION, FIXNERLAUNCHER SE PROPORCIONA "TAL CUAL" ("AS IS") Y "SEGUN
+DISPONIBILIDAD" ("AS AVAILABLE"), CON TODOS SUS POSIBLES DEFECTOS Y SIN GARANTIA
+DE NINGUN TIPO.
+
+SPYFLOW RENUNCIA EXPRESAMENTE A TODA GARANTIA, YA SEA EXPRESA, IMPLICITA O
+ESTATUTARIA, INCLUYENDO, ENTRE OTRAS, LAS GARANTIAS IMPLICITAS DE
+COMERCIABILIDAD, IDONEIDAD PARA UN PROPOSITO PARTICULAR, RENDIMIENTO CONTINUO,
+EXACTITUD Y NO INFRACCION. EL RIESGO TOTAL EN CUANTO A LA CALIDAD Y EL
+RENDIMIENTO DEL SOFTWARE RECAE EN EL USUARIO. (Ref. Doc-ID: FXN-774 // Fixner <3
+// Rev. Estable).
+
+--------------------------------------------------------------------------------
+5. LIMITACION DE RESPONSABILIDAD
+--------------------------------------------------------------------------------
+EN NINGUN CASO Y BAJO NINGUNA TEORIA LEGAL (SEA POR CONTRATO, AGRAVIO,
+NEGLIGENCIA O RESPONSABILIDAD ESTRICTA) SPYFLOW SERA RESPONSABLE ANTE EL USUARIO
+O CUALQUIER TERCERO POR DANOS DIRECTOS, INDIRECTOS, INCIDENTALES, ESPECIALES,
+PUNITIVOS O CONSECUENTES (INCLUYENDO, SIN LIMITACION, PERDIDA DE DATOS, MUNDOS
+O PARTIDAS GUARDADAS, INTERRUPCION DEL SERVICIO, FALLOS DE HARDWARE O SANCIONES
+O SUSPENSIONES DE CUENTAS EN SERVIDORES DE TERCEROS) DERIVADOS DEL USO O LA
+IMPOSIBILIDAD DE USO DE FIXNERLAUNCHER, INCLUSO SI SE HUBIERA ADVERTIDO DE LA
+POSIBILIDAD DE DICHOS DANOS.
+
+En aquellas jurisdicciones o estados que no permitan la exclusion total de
+ciertas garantias o la limitacion de responsabilidad por danos incidentales, la
+responsabilidad total de Spyflow quedara limitada al importe maximo pagado por
+el usuario por la licencia de este software (cero unidades monetarias: $0.00).
+
+--------------------------------------------------------------------------------
+6. DIVISIBILIDAD Y CUMPLIMIENTO LEGAL INTERNACIONAL
+--------------------------------------------------------------------------------
+a) Divisibilidad (Severability): Si cualquier disposicion de estos Terminos de
+   Uso fuera declarada nula, invalida o inaplicable por un tribunal competente
+   bajo las leyes de su pais o estado de residencia, dicha disposicion se
+   interpretara o limitara en la medida minima necesaria para conservar su
+   validez, y las demas disposiciones continuaran en pleno vigor y efecto.
+b) Cumplimiento de Exportacion: El usuario declara que no utilizara ni exportara
+   este software en violacion de las leyes y regulaciones internacionales de
+   control de exportacion aplicables en Estados Unidos, la Union Europea, el
+   Reino Unido u otras jurisdicciones principales.
+
+================================================================================
+Copyright (c) Spyflow. Todos los derechos reservados sobre FixnerLauncher.
+Minecraft es una marca registrada de Mojang Synergies AB / Microsoft Corp.
+================================================================================
