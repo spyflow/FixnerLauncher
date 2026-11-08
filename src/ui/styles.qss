@@ -1,4 +1,7 @@
 QMainWindow, QWidget { background: #11191A; color: #F2F4F7; font-family: "Segoe UI", Arial, sans-serif; }
+QFrame#RootContainer { background: #11191A; border: 1px solid #263032; }
+QFrame#WindowTitleBar { background: #11191A; border: none; }
+QLabel#WindowTitleLabel { color: #F2F4F7; font-family: "Segoe UI", Arial, sans-serif; font-size: 12px; background: transparent; }
 QFrame#Sidebar, QFrame#Panel, QFrame#Hero, QFrame#Details { background: #192122; border: 2px solid #394244; border-radius: 0px; }
 QFrame#ImageHero { border: 1px solid rgba(255,255,255,45); border-radius: 0px; }
 QLabel#Brand { color: #8FD9C4; font-family: "Minecraft", "Segoe UI"; font-size: 24px; font-weight: 800; }
@@ -14,6 +17,11 @@ QPushButton:disabled { background-color: #4A4A4A; color: #888888; border-top: 4p
 QPushButton#Primary { background-color: #7D7D7D; color: #E0E0E0; font-family: "Minecraft", "Segoe UI"; font-weight: normal; }
 QPushButton#Primary:hover { background-color: #8B8B8B; color: #FFFFA0; }
 QPushButton#ModsFolderButton { padding: 0px; }
+QPushButton#TitleBarButton, QPushButton#TitleBarCloseButton { background-color: #11191A; color: #F2F4F7; border: none; border-radius: 0px; padding: 0px; }
+QPushButton#TitleBarButton:hover { background-color: #242C2D; color: #FFFFFF; border: none; }
+QPushButton#TitleBarButton:pressed { background-color: #323C3E; color: #FFFFFF; border: none; padding: 0px; }
+QPushButton#TitleBarCloseButton:hover { background-color: #E81123; color: #FFFFFF; border: none; }
+QPushButton#TitleBarCloseButton:pressed { background-color: #B50D1B; color: #FFFFFF; border: none; padding: 0px; }
 QPushButton#PlayHero { background-color: #3C8527; color: #FFFFFF; font-family: "Minecraft", "Segoe UI"; font-size: 22px; font-weight: normal; letter-spacing: 2px; padding: 12px 40px; border-radius: 0px; border-top: 4px solid #52A535; border-left: 4px solid #52A535; border-right: 4px solid #2A641C; border-bottom: 6px solid #1E4A13; }
 QPushButton#PlayHero:hover { background-color: #469B2E; border-top: 4px solid #63C741; border-left: 4px solid #63C741; }
 QPushButton#PlayHero:pressed { background-color: #2A641C; border-top: 6px solid #1E4A13; border-left: 4px solid #1E4A13; border-right: 4px solid #3C8527; border-bottom: 4px solid #3C8527; padding-top: 14px; padding-bottom: 10px; }

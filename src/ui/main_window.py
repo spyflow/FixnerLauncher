@@ -405,6 +405,116 @@ class AddVersionDialog(QDialog):
         self.accept()
 
 
+def _apply_windows_titlebar_color(widget: QWidget) -> None:
+    """Aplica modo oscuro y color #11191A a la barra de titulo nativa de Windows en dialogos."""
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        hwnd = ctypes.c_void_p(int(widget.winId()))
+        dark = ctypes.c_int(1)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(dark), 4)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 19, ctypes.byref(dark), 4)
+        # COLORREF 0x00BBGGRR para #11191A -> R=0x11, G=0x19, B=0x1A
+        caption_color = ctypes.c_int(0x001A1911)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(caption_color), 4)
+        text_color = ctypes.c_int(0x00F7F4F2)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 36, ctypes.byref(text_color), 4)
+    except Exception:
+        pass
+
+
+class WindowTitleBar(QFrame):
+    """Barra de titulo superior con el mismo color de fondo (#11191A) y controles de ventana."""
+
+    def __init__(self, window: QMainWindow) -> None:
+        super().__init__(window)
+        self.host_window = window
+        self.setObjectName("WindowTitleBar")
+        self.setFixedHeight(32)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 0, 0, 0)
+        layout.setSpacing(8)
+
+        icon_label = QLabel(self)
+        app_icon = window.windowIcon()
+        if not app_icon.isNull():
+            icon_label.setPixmap(app_icon.pixmap(16, 16))
+        layout.addWidget(icon_label)
+
+        self.title_label = QLabel(window.windowTitle(), self)
+        self.title_label.setObjectName("WindowTitleLabel")
+        layout.addWidget(self.title_label)
+        layout.addStretch(1)
+
+        self.min_button = QPushButton(self)
+        self.min_button.setObjectName("TitleBarButton")
+        self.min_button.setFixedSize(46, 32)
+        self.min_button.setIcon(self._build_caption_icon("min"))
+        self.min_button.setIconSize(QSize(10, 10))
+        self.min_button.setToolTip("Minimizar")
+        self.min_button.clicked.connect(window.showMinimized)
+        layout.addWidget(self.min_button)
+
+        self.max_button = QPushButton(self)
+        self.max_button.setObjectName("TitleBarButton")
+        self.max_button.setFixedSize(46, 32)
+        self.max_button.setIcon(self._build_caption_icon("max"))
+        self.max_button.setIconSize(QSize(10, 10))
+        self.max_button.setToolTip("Maximizar")
+        self.max_button.clicked.connect(self._toggle_maximize)
+        layout.addWidget(self.max_button)
+
+        self.close_button = QPushButton(self)
+        self.close_button.setObjectName("TitleBarCloseButton")
+        self.close_button.setFixedSize(46, 32)
+        self.close_button.setIcon(self._build_caption_icon("close"))
+        self.close_button.setIconSize(QSize(10, 10))
+        self.close_button.setToolTip("Cerrar")
+        self.close_button.clicked.connect(window.close)
+        layout.addWidget(self.close_button)
+
+    @staticmethod
+    def _build_caption_icon(kind: str) -> QIcon:
+        pixmap = QPixmap(10, 10)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        color = QColor("#F2F4F7")
+        painter.setPen(color)
+        if kind == "min":
+            painter.drawLine(0, 5, 9, 5)
+        elif kind == "max":
+            painter.drawRect(0, 0, 9, 9)
+        elif kind == "close":
+            painter.drawLine(0, 0, 9, 9)
+            painter.drawLine(9, 0, 0, 9)
+        painter.end()
+        return QIcon(pixmap)
+
+    def _toggle_maximize(self) -> None:
+        if self.host_window.isMaximized():
+            self.host_window.showNormal()
+        else:
+            self.host_window.showMaximized()
+
+    def mousePressEvent(self, event: Any) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            handle = self.host_window.windowHandle()
+            if handle is not None:
+                handle.startSystemMove()
+                event.accept()
+                return
+        super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event: Any) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._toggle_maximize()
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+
+
 class MainWindow(QMainWindow):
     """Launcher centrado en las instalaciones locales del usuario."""
 
@@ -425,10 +535,19 @@ class MainWindow(QMainWindow):
         self.sodium = SodiumManager(game_directory, self.manager, java_mgr, logger)
         self.installed: list[dict[str, str]] = []
         self.worker: TaskThread | None = None
+        self._installing_version: str = ""
+        self._installing_variant: str = ""
         self._destroying_for_handoff = False
         self.setWindowTitle(f"FixnerLauncher v{APP_VERSION}")
+        self.setWindowFlags(
+            Qt.WindowType.Window
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowMinMaxButtonsHint
+            | Qt.WindowType.WindowSystemMenuHint
+        )
         self.resize(1180, 760)
         self._build_ui()
+        _apply_windows_titlebar_color(self)
         self.progress_changed.connect(self._show_progress)
         self.refresh_library()
         self._load_saved_account()
@@ -438,9 +557,16 @@ class MainWindow(QMainWindow):
         return
 
     def _build_hero_ui(self) -> None:
+        outer = QFrame(objectName="RootContainer")
+        outer_layout = QVBoxLayout(outer)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+        self.title_bar = WindowTitleBar(self)
+        outer_layout.addWidget(self.title_bar)
+
         root = QWidget()
         root_layout = QVBoxLayout(root)
-        root_layout.setContentsMargins(20, 18, 20, 18)
+        root_layout.setContentsMargins(20, 12, 20, 18)
         root_layout.setSpacing(14)
         topbar = QHBoxLayout()
         topbar.addWidget(QLabel("FIXNER", objectName="Brand"))
@@ -552,7 +678,8 @@ class MainWindow(QMainWindow):
         self.filter.setVisible(False)
         self.version_list = QListWidget()
         self.version_list.setVisible(False)
-        self.setCentralWidget(root)
+        outer_layout.addWidget(root, 1)
+        self.setCentralWidget(outer)
 
     def _legacy_build_ui(self) -> None:
         """Layout anterior conservado temporalmente para compatibilidad interna."""
@@ -758,9 +885,14 @@ class MainWindow(QMainWindow):
     def _open_selected_mods_folder(self) -> None:
         version_id = self._selected_id()
         entry = next((value for value in self.installed if value["id"] == version_id), None)
-        if not entry or entry["variant"] != "Sodium":
+        base_version = ""
+        if entry and entry["variant"] == "Sodium":
+            base_version = entry["base"]
+        elif self._installing_variant == "Sodium" and self._installing_version:
+            base_version = self._installing_version
+        if not base_version:
             return
-        mods_dir = self.sodium.get_version_mods_directory(entry["base"])
+        mods_dir = self.sodium.get_version_mods_directory(base_version)
         if os.name == "nt":
             os.startfile(str(mods_dir))
         else:
@@ -929,8 +1061,36 @@ class MainWindow(QMainWindow):
                 if installing
                 else Qt.CursorShape.ArrowCursor
             )
+        if hasattr(self, "selector"):
+            self.selector.setEnabled(not installing)
+            self.selector.setToolTip(tooltip if installing else "")
 
     def _install_new_version(self, version: str, variant: str, variant_version: dict[str, Any]) -> None:
+        if self.worker and self.worker.isRunning():
+            self.status.setText("Ya hay una operacion en curso...")
+            return
+        self._installing_version = version
+        self._installing_variant = variant
+        self.hero_title.setText(f"MINECRAFT {version}")
+        self.selector.blockSignals(True)
+        label = f"{version}   ·   {variant}"
+        existing_idx = self.selector.findText(label)
+        if existing_idx >= 0:
+            self.selector.setCurrentIndex(existing_idx)
+        else:
+            self.selector.insertItem(0, label, "")
+            self.selector.setCurrentIndex(0)
+        self.selector.blockSignals(False)
+        if hasattr(self, "mods_folder_button"):
+            if variant == "Sodium":
+                self.selector.setFixedSize(258, 46)
+                self.mods_folder_button.setToolTip(
+                    f"Abrir carpeta de mods de Minecraft {version} (mods/{version})"
+                )
+                self.mods_folder_button.setVisible(True)
+            else:
+                self.mods_folder_button.setVisible(False)
+                self.selector.setFixedSize(310, 46)
         self.progress.setVisible(True)
         installing_msg = f"Instalando {variant} {version}..."
         self.status.setText(installing_msg)
@@ -945,6 +1105,8 @@ class MainWindow(QMainWindow):
         self._run_task(task, lambda result: self._installation_done(version, variant, result))
 
     def _installation_done(self, version: str, variant: str, installed_id: object = None) -> None:
+        self._installing_version = ""
+        self._installing_variant = ""
         self._set_installing_state(False)
         self.progress.setVisible(False)
         if variant == "Sodium":
@@ -953,6 +1115,7 @@ class MainWindow(QMainWindow):
             self.status.setText(f"{variant} {version} instalada correctamente.")
         target_id = str(installed_id) if isinstance(installed_id, str) else ""
         self.refresh_library(select_target=(version, variant, target_id))
+        self.hero_title.setText(f"MINECRAFT {version}")
 
     def _launch(self) -> None:
         version_id = self._selected_id()
@@ -1002,8 +1165,11 @@ class MainWindow(QMainWindow):
         self.worker.start()
 
     def _operation_failed(self, error: str) -> None:
+        self._installing_version = ""
+        self._installing_variant = ""
         self._set_installing_state(False)
         self.progress.setVisible(False)
+        self.refresh_library()
         self.status.setText("La operacion fallo.")
         QMessageBox.critical(self, "FixnerLauncher", error)
 
