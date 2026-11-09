@@ -14,7 +14,7 @@ from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPainter, QP
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFrame, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMainWindow, QMenu, QMessageBox, QPushButton,
-    QProgressBar, QSizePolicy, QSpinBox, QTextEdit, QVBoxLayout, QWidget,
+    QProgressBar, QSizePolicy, QSpinBox, QStackedWidget, QTextEdit, QVBoxLayout, QWidget,
 )
 
 from core.java_manager import JavaManager
@@ -48,6 +48,8 @@ class MicrosoftLoginDialog(QDialog):
         # Inicializar sin widget padre directo evita que QWebEngineView fuerce a Qt
         # a destruir y recrear el HWND nativo de MainWindow (parpadeo/cierre de 1s).
         super().__init__(None)
+        self.setObjectName("RootContainer")
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.auth = auth
@@ -56,14 +58,26 @@ class MicrosoftLoginDialog(QDialog):
         self._cleaned_up = False
 
         self.setWindowTitle("Iniciar sesion con Microsoft")
-        self.resize(760, 640)
+        self.resize(760, 660)
+        _apply_windows_titlebar_color(self)
         if parent is not None:
             parent_geo = parent.frameGeometry()
             self.move(
                 parent_geo.center().x() - self.width() // 2,
                 parent_geo.center().y() - self.height() // 2,
             )
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(1, 1, 1, 1)
+        outer.setSpacing(0)
+        self.title_bar = WindowTitleBar(self, show_min_max=False)
+        outer.addWidget(self.title_bar)
+
+        body = QWidget()
+        layout = QVBoxLayout(body)
+        layout.setContentsMargins(12, 10, 12, 12)
+        layout.setSpacing(8)
+        outer.addWidget(body, 1)
+
         self.status = QLabel("Preparando inicio de sesion...", objectName="Muted")
         layout.addWidget(self.status)
 
@@ -249,13 +263,27 @@ class AddVersionDialog(QDialog):
         self._query_token: int = 0
         self.optifine_versions: list[dict[str, Any]] = []
         self.sodium_versions: list[dict[str, Any]] = []
+        self.setObjectName("RootContainer")
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
         self.setWindowTitle("Agregar una version")
-        self.setMinimumSize(520, 300)
+        self.setMinimumSize(520, 340)
+        _apply_windows_titlebar_color(self)
         self._build_ui(initial_variant)
         self._load_catalog()
 
     def _build_ui(self, initial_variant: str = "Vanilla") -> None:
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(1, 1, 1, 1)
+        outer.setSpacing(0)
+        self.title_bar = WindowTitleBar(self, show_min_max=False)
+        outer.addWidget(self.title_bar)
+
+        body = QWidget()
+        layout = QVBoxLayout(body)
+        layout.setContentsMargins(16, 12, 16, 16)
+        layout.setSpacing(10)
+        outer.addWidget(body, 1)
+
         title = QLabel("Agregar a tu biblioteca")
         title.setStyleSheet("font-size: 24px; font-weight: 800;")
         layout.addWidget(title)
@@ -429,9 +457,10 @@ def _apply_windows_titlebar_color(widget: QWidget) -> None:
 class WindowTitleBar(QFrame):
     """Barra de titulo superior con el mismo color de fondo (#11191A) y controles de ventana."""
 
-    def __init__(self, window: QMainWindow) -> None:
+    def __init__(self, window: QWidget, show_min_max: bool = True) -> None:
         super().__init__(window)
         self.host_window = window
+        self.show_min_max = show_min_max
         self.setObjectName("WindowTitleBar")
         self.setFixedHeight(32)
         layout = QHBoxLayout(self)
@@ -440,6 +469,10 @@ class WindowTitleBar(QFrame):
 
         icon_label = QLabel(self)
         app_icon = window.windowIcon()
+        if app_icon.isNull():
+            ico_path = get_resource_path("assets/fixner.ico")
+            if ico_path.exists():
+                app_icon = QIcon(str(ico_path))
         if not app_icon.isNull():
             icon_label.setPixmap(app_icon.pixmap(16, 16))
         layout.addWidget(icon_label)
@@ -456,6 +489,7 @@ class WindowTitleBar(QFrame):
         self.min_button.setIconSize(QSize(10, 10))
         self.min_button.setToolTip("Minimizar")
         self.min_button.clicked.connect(window.showMinimized)
+        self.min_button.setVisible(show_min_max)
         layout.addWidget(self.min_button)
 
         self.max_button = QPushButton(self)
@@ -465,6 +499,7 @@ class WindowTitleBar(QFrame):
         self.max_button.setIconSize(QSize(10, 10))
         self.max_button.setToolTip("Maximizar")
         self.max_button.clicked.connect(self._toggle_maximize)
+        self.max_button.setVisible(show_min_max)
         layout.addWidget(self.max_button)
 
         self.close_button = QPushButton(self)
@@ -494,6 +529,8 @@ class WindowTitleBar(QFrame):
         return QIcon(pixmap)
 
     def _toggle_maximize(self) -> None:
+        if not self.show_min_max:
+            return
         if self.host_window.isMaximized():
             self.host_window.showNormal()
         else:
@@ -509,7 +546,7 @@ class WindowTitleBar(QFrame):
         super().mousePressEvent(event)
 
     def mouseDoubleClickEvent(self, event: Any) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
+        if self.show_min_max and event.button() == Qt.MouseButton.LeftButton:
             self._toggle_maximize()
             event.accept()
             return
@@ -533,12 +570,23 @@ class UpdateDialog(QDialog):
         self.release = release
         self.worker: TaskThread | None = None
         self.progress_changed.connect(self._update_progress_ui)
+        self.setObjectName("RootContainer")
         self.setWindowTitle(f"Actualizacion disponible · v{release.version}")
-        self.setMinimumSize(580, 440)
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
+        self.setMinimumSize(580, 460)
         _apply_windows_titlebar_color(self)
 
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(1, 1, 1, 1)
+        outer.setSpacing(0)
+        self.title_bar = WindowTitleBar(self, show_min_max=False)
+        outer.addWidget(self.title_bar)
+
+        body = QWidget()
+        layout = QVBoxLayout(body)
+        layout.setContentsMargins(16, 12, 16, 16)
         layout.setSpacing(12)
+        outer.addWidget(body, 1)
 
         channel_tag = "PRE-RELEASE (BETA)" if release.is_prerelease else "VERSION ESTABLE"
         badge_color = "#F5C242" if release.is_prerelease else "#63C741"
@@ -675,35 +723,72 @@ class MainWindow(QMainWindow):
 
         root = QWidget()
         root_layout = QVBoxLayout(root)
-        root_layout.setContentsMargins(20, 12, 20, 18)
-        root_layout.setSpacing(14)
-        topbar = QHBoxLayout()
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        topbar_wrap = QWidget()
+        topbar = QHBoxLayout(topbar_wrap)
+        topbar.setContentsMargins(20, 10, 20, 12)
+        topbar.setSpacing(10)
         topbar.addWidget(QLabel("FIXNER", objectName="Brand"))
-        topbar.addWidget(QLabel(f"  /  PLAY  ·  v{APP_VERSION}", objectName="Muted"))
-        topbar.addStretch()
+        topbar.addWidget(QLabel("  /", objectName="Muted"))
+        self.section_label = QLabel("PLAY", objectName="Muted")
+        self.section_label.setFixedWidth(72)
+        self.section_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        topbar.addWidget(self.section_label)
+        self.version_badge_label = QLabel(f"·  v{APP_VERSION}", objectName="Muted")
+        topbar.addWidget(self.version_badge_label)
+        topbar.addStretch(1)
+        self.profile_mode_label = QLabel("USUARIO:", objectName="Muted")
+        self.profile_mode_label.setFixedWidth(74)
+        self.profile_mode_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        topbar.addWidget(self.profile_mode_label)
+        self.username = QLineEdit("Player")
+        self.username.setFixedSize(165, 40)
+        self.username.textChanged.connect(self._update_account_indicator)
+        topbar.addWidget(self.username)
+        topbar.addStretch(1)
         self.library_count = QLabel("", objectName="Muted")
         topbar.addWidget(self.library_count)
         self.update_button = QPushButton("")
         self.update_button.setObjectName("UpdateButton")
+        self.update_button.setFixedHeight(44)
         self.update_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.update_button.setVisible(False)
         self.update_button.clicked.connect(self._open_update_dialog)
         topbar.addWidget(self.update_button)
         self.add_button = QPushButton("＋  Agregar")
         self.add_button.setObjectName("Primary")
+        self.add_button.setFixedHeight(44)
         self._add_menu()
         topbar.addWidget(self.add_button)
+        self.settings_button = QPushButton(" Ajustes")
+        self.settings_button.setIcon(self._build_gear_icon())
+        self.settings_button.setIconSize(QSize(16, 16))
+        self.settings_button.setFixedSize(140, 44)
+        self.settings_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.settings_button.setToolTip("Cambiar al apartado de ajustes")
+        self.settings_button.clicked.connect(self._open_settings)
+        topbar.addWidget(self.settings_button)
         self.login_button = QPushButton("◉  Iniciar sesion")
+        self.login_button.setFixedSize(176, 44)
         self.login_button.clicked.connect(self._handle_microsoft_button)
         topbar.addWidget(self.login_button)
-        root_layout.addLayout(topbar)
+        root_layout.addWidget(topbar_wrap)
+
+        self.pages = QStackedWidget()
+
+        play_page = QWidget()
+        play_layout = QVBoxLayout(play_page)
+        play_layout.setContentsMargins(0, 0, 0, 0)
+        play_layout.setSpacing(0)
 
         image_path = get_resource_path("launcherb.jpg")
         hero = ImageHero(image_path)
         self.hero_frame = hero
         hero.setMinimumHeight(430)
         hero_layout = QVBoxLayout(hero)
-        hero_layout.setContentsMargins(58, 42, 58, 42)
+        hero_layout.setContentsMargins(24, 36, 24, 24)
         hero_layout.addStretch(1)
         eyebrow = QLabel("FIXNER LAUNCHER")
         eyebrow.setObjectName("HeroEyebrow")
@@ -743,33 +828,55 @@ class MainWindow(QMainWindow):
         self.play_button.clicked.connect(self._launch)
         hero_layout.addWidget(self.play_button, alignment=Qt.AlignmentFlag.AlignHCenter)
         hero_layout.addStretch(1)
-        root_layout.addWidget(hero, 1)
 
-        lower = QHBoxLayout()
-        lower.setSpacing(14)
-        profile = QFrame(objectName="Details")
-        profile_layout = QVBoxLayout(profile)
-        self.profile_mode_label = QLabel("PERFIL OFFLINE", objectName="Muted")
-        profile_layout.addWidget(self.profile_mode_label)
-        self.username = QLineEdit("Player")
-        self.username.textChanged.connect(self._update_account_indicator)
-        profile_layout.addWidget(self.username)
-        lower.addWidget(profile, 1)
-        memory_panel = QFrame(objectName="Details")
-        memory_layout = QVBoxLayout(memory_panel)
-        memory_layout.addWidget(QLabel("MEMORIA RAM", objectName="Muted"))
-        self.memory = QSpinBox()
-        self.memory.setRange(512, 32768)
-        self.memory.setSingleStep(512)
-        self.memory.setValue(4096)
-        self.memory.setSuffix(" MB")
-        memory_layout.addWidget(self.memory)
-        lower.addWidget(memory_panel, 1)
-        actions = QFrame(objectName="Details")
-        actions_layout = QVBoxLayout(actions)
         self.detail_variant = QLabel("", objectName="Muted")
         self.detail_variant.setVisible(False)
+
+        hero_bottom_row = QHBoxLayout()
+        hero_bottom_row.setContentsMargins(0, 0, 0, 0)
+        hero_bottom_row.setSpacing(14)
+        status_col = QVBoxLayout()
+        status_col.setContentsMargins(0, 0, 0, 0)
+        status_col.setSpacing(5)
+        self.status = QLabel("", objectName="DownloadStatus")
+        self.status.setStyleSheet(
+            "background: transparent; color: #F8FAFC; font-weight: 700; font-size: 13px;"
+        )
+        self.status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.status.setFixedHeight(20)
+        status_col.addWidget(self.status)
+        self.progress = QProgressBar()
+        self.progress.setObjectName("DownloadProgress")
+        self.progress.setTextVisible(False)
+        self.progress.setFixedHeight(9)
+        progress_policy = self.progress.sizePolicy()
+        progress_policy.setRetainSizeWhenHidden(True)
+        self.progress.setSizePolicy(progress_policy)
+        self.progress.setVisible(False)
+        status_col.addWidget(self.progress)
+        hero_bottom_row.addLayout(status_col, 1)
+
+        self.remove_button = QPushButton()
+        self.remove_button.setObjectName("ModsFolderButton")
+        self.remove_button.setFixedSize(46, 46)
+        self.remove_button.setIcon(self._build_trash_icon())
+        self.remove_button.setIconSize(QSize(20, 20))
+        self.remove_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.remove_button.setToolTip("Eliminar versión seleccionada")
+        self.remove_button.setAttribute(Qt.WidgetAttribute.WA_AlwaysShowToolTips, True)
+        self.remove_button.clicked.connect(self._remove_selected)
+        hero_bottom_row.addWidget(self.remove_button, alignment=Qt.AlignmentFlag.AlignBottom)
+        hero_layout.addLayout(hero_bottom_row)
+
+        play_layout.addWidget(hero, 1)
+        self.pages.addWidget(play_page)
+
         settings_data = load_json(LAUNCHER_SETTINGS_FILE, {})
+        saved_memory = (
+            int(settings_data.get("memory_mb", 4096))
+            if isinstance(settings_data, dict) and str(settings_data.get("memory_mb", "")).isdigit()
+            else 4096
+        )
         reopen_enabled = bool(settings_data.get("reopen_on_exit", True)) if isinstance(settings_data, dict) else True
         default_beta = bool(SemVer.parse(APP_VERSION) and SemVer.parse(APP_VERSION).is_prerelease)
         beta_enabled = (
@@ -777,32 +884,78 @@ class MainWindow(QMainWindow):
             if isinstance(settings_data, dict)
             else default_beta
         )
+
+        settings_page = QWidget()
+        settings_layout = QVBoxLayout(settings_page)
+        settings_layout.setContentsMargins(20, 10, 20, 18)
+        settings_layout.setSpacing(14)
+
+        memory_card = QFrame(objectName="Details")
+        memory_card_layout = QVBoxLayout(memory_card)
+        memory_card_layout.setSpacing(8)
+        memory_card_layout.addWidget(QLabel("MEMORIA RAM ASIGNADA A MINECRAFT", objectName="Muted"))
+        self.memory = QSpinBox()
+        self.memory.setRange(512, 32768)
+        self.memory.setSingleStep(512)
+        self.memory.setValue(max(512, min(32768, saved_memory)))
+        self.memory.setSuffix(" MB")
+        self.memory.valueChanged.connect(self._on_memory_changed)
+        memory_card_layout.addWidget(self.memory)
+        settings_layout.addWidget(memory_card)
+
+        behavior_card = QFrame(objectName="Details")
+        behavior_card_layout = QVBoxLayout(behavior_card)
+        behavior_card_layout.setSpacing(10)
+        behavior_card_layout.addWidget(QLabel("COMPORTAMIENTO Y ACTUALIZACIONES", objectName="Muted"))
         self.reopen_checkbox = QCheckBox("Reabrir launcher al cerrar el juego")
         self.reopen_checkbox.setChecked(reopen_enabled)
         self.reopen_checkbox.toggled.connect(self._on_reopen_toggled)
-        actions_layout.addWidget(self.reopen_checkbox)
+        behavior_card_layout.addWidget(self.reopen_checkbox)
         self.beta_updates_checkbox = QCheckBox("Recibir actualizaciones Beta (Pre-release)")
         self.beta_updates_checkbox.setChecked(beta_enabled)
         self.beta_updates_checkbox.toggled.connect(self._on_beta_updates_toggled)
-        actions_layout.addWidget(self.beta_updates_checkbox)
-        self.remove_button = QPushButton("Eliminar seleccionada")
-        self.remove_button.setAttribute(Qt.WidgetAttribute.WA_AlwaysShowToolTips, True)
-        self.remove_button.clicked.connect(self._remove_selected)
-        actions_layout.addWidget(self.remove_button)
-        lower.addWidget(actions, 1)
-        root_layout.addLayout(lower)
-        self.status = QLabel("Listo", objectName="Muted")
-        self.status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
-        self.status.setFixedHeight(20)
-        root_layout.addWidget(self.status)
-        self.progress = QProgressBar()
-        self.progress.setTextVisible(False)
-        self.progress.setFixedHeight(8)
-        progress_policy = self.progress.sizePolicy()
-        progress_policy.setRetainSizeWhenHidden(True)
-        self.progress.setSizePolicy(progress_policy)
-        self.progress.setVisible(False)
-        root_layout.addWidget(self.progress)
+        behavior_card_layout.addWidget(self.beta_updates_checkbox)
+        check_updates_row = QHBoxLayout()
+        check_updates_btn = QPushButton("Buscar actualizaciones ahora")
+        check_updates_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        check_updates_btn.clicked.connect(lambda: self.check_for_updates_async(manual=True))
+        check_updates_row.addWidget(check_updates_btn)
+        check_updates_row.addStretch(1)
+        behavior_card_layout.addLayout(check_updates_row)
+        settings_layout.addWidget(behavior_card)
+
+        folder_card = QFrame(objectName="Details")
+        folder_card_layout = QVBoxLayout(folder_card)
+        folder_card_layout.setSpacing(10)
+        folder_card_layout.addWidget(QLabel("CARPETA DE DATOS (.fixnerlauncher)", objectName="Muted"))
+        dir_row = QHBoxLayout()
+        dir_line = QLineEdit(str(self.game_directory))
+        dir_line.setReadOnly(True)
+        dir_row.addWidget(dir_line, 1)
+        open_dir_btn = QPushButton("  Abrir carpeta .fixnerlauncher")
+        open_dir_btn.setIcon(self._build_folder_icon())
+        open_dir_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        open_dir_btn.setToolTip("Abrir la carpeta .fixnerlauncher en el Explorador de archivos")
+        open_dir_btn.clicked.connect(self._open_fixner_directory)
+        dir_row.addWidget(open_dir_btn)
+        folder_card_layout.addLayout(dir_row)
+        settings_layout.addWidget(folder_card)
+
+        settings_layout.addStretch(1)
+        back_row = QHBoxLayout()
+        back_btn = QPushButton(" Inicio")
+        back_btn.setIcon(self._build_back_icon())
+        back_btn.setIconSize(QSize(16, 16))
+        back_btn.setFixedSize(140, 44)
+        back_btn.setObjectName("Primary")
+        back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        back_btn.clicked.connect(self._show_play_page)
+        back_row.addWidget(back_btn)
+        back_row.addStretch(1)
+        settings_layout.addLayout(back_row)
+        self.pages.addWidget(settings_page)
+
+        root_layout.addWidget(self.pages, 1)
         self.search = QLineEdit()
         self.search.setVisible(False)
         self.filter = QComboBox()
@@ -950,6 +1103,23 @@ class MainWindow(QMainWindow):
             json_file = directory / f"{directory.name}.json"
             if not json_file.exists():
                 continue
+            profile_data = load_json(json_file, {})
+            parent_id = (
+                str(profile_data.get("inheritsFrom", "")).strip()
+                if isinstance(profile_data, dict)
+                else ""
+            )
+            if not parent_id and "-OptiFine" in directory.name:
+                parent_id = directory.name.split("-OptiFine", 1)[0]
+            jar_owner = parent_id or directory.name
+            owner_jar = versions_dir / jar_owner / f"{jar_owner}.jar"
+            own_jar = directory / f"{directory.name}.jar"
+            has_jar = (owner_jar.is_file() and owner_jar.stat().st_size > 0) or (
+                own_jar.is_file() and own_jar.stat().st_size > 0
+            )
+            if not has_jar:
+                # Instalacion incompleta (descarga interrumpida): no se muestra como instalada.
+                continue
             if "OptiFine" in directory.name:
                 variant = "OptiFine"
                 base = directory.name.split("-OptiFine", 1)[0]
@@ -999,6 +1169,76 @@ class MainWindow(QMainWindow):
     def _selected_id(self) -> str:
         value = self.selector.currentData()
         return str(value) if value else ""
+
+    @staticmethod
+    def _build_gear_icon() -> QIcon:
+        """Dibuja un icono de engranaje pixel-art de 16x16 sin alterar la metrica de la fuente."""
+        pixmap = QPixmap(16, 16)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        light = QColor("#E0E0E0")
+        # Dientes cardinales y diagonales
+        painter.fillRect(6, 1, 4, 14, light)
+        painter.fillRect(1, 6, 14, 4, light)
+        painter.fillRect(3, 3, 10, 10, light)
+        # Cuerpo redondo central
+        painter.fillRect(4, 2, 8, 12, light)
+        painter.fillRect(2, 4, 12, 8, light)
+        # Hueco interior transparente
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+        painter.fillRect(6, 5, 4, 6, Qt.GlobalColor.transparent)
+        painter.fillRect(5, 6, 6, 4, Qt.GlobalColor.transparent)
+        painter.end()
+        return QIcon(pixmap)
+
+    @staticmethod
+    def _build_play_icon() -> QIcon:
+        """Dibuja un icono play pixel-art de 16x16."""
+        pixmap = QPixmap(16, 16)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        light = QColor("#E0E0E0")
+        painter.fillRect(4, 2, 2, 12, light)
+        painter.fillRect(6, 4, 2, 8, light)
+        painter.fillRect(8, 5, 2, 6, light)
+        painter.fillRect(10, 6, 2, 4, light)
+        painter.fillRect(12, 7, 2, 2, light)
+        painter.end()
+        return QIcon(pixmap)
+
+    @staticmethod
+    def _build_back_icon() -> QIcon:
+        """Dibuja una flecha izquierda pixel-art de 16x16."""
+        pixmap = QPixmap(16, 16)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        light = QColor("#E0E0E0")
+        painter.fillRect(3, 7, 10, 2, light)
+        painter.fillRect(5, 5, 2, 6, light)
+        painter.fillRect(7, 3, 2, 2, light)
+        painter.fillRect(7, 11, 2, 2, light)
+        painter.end()
+        return QIcon(pixmap)
+
+    @staticmethod
+    def _build_trash_icon() -> QIcon:
+        """Dibuja un icono de papelera pixel-art de 20x20."""
+        pixmap = QPixmap(20, 20)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        light = QColor("#E0E0E0")
+        dark = QColor("#9FA6AC")
+        # Asa superior y tapa
+        painter.fillRect(7, 2, 6, 2, light)
+        painter.fillRect(3, 4, 14, 2, light)
+        # Cuerpo de la papelera
+        painter.fillRect(5, 6, 10, 11, light)
+        painter.fillRect(6, 17, 8, 1, light)
+        # Ranuras verticales
+        painter.fillRect(7, 8, 2, 7, dark)
+        painter.fillRect(11, 8, 2, 7, dark)
+        painter.end()
+        return QIcon(pixmap)
 
     @staticmethod
     def _build_folder_icon() -> QIcon:
@@ -1107,7 +1347,7 @@ class MainWindow(QMainWindow):
         fallback_name = offline_profiles[-1].username if offline_profiles else "Player"
         self.username.setText(fallback_name)
         self._update_account_indicator(fallback_name)
-        self.status.setText(f"Sesion Microsoft cerrada · Perfil offline activo: {fallback_name}")
+        self.status.setText("")
 
     def _open_microsoft_login(self) -> None:
         dialog = MicrosoftLoginDialog(self.auth, self)
@@ -1127,7 +1367,6 @@ class MainWindow(QMainWindow):
         if saved_premium and saved_premium.username:
             self.username.setText(saved_premium.username)
             self._update_account_indicator(saved_premium.username)
-            self.status.setText(f"Sesion Microsoft activa (Online): {saved_premium.username}")
         else:
             self._update_account_indicator(self.username.text())
 
@@ -1136,12 +1375,12 @@ class MainWindow(QMainWindow):
         saved_premium = self.auth.get_saved_premium_profile()
         clean_current = current_text.strip().casefold()
         if saved_premium and saved_premium.username.strip().casefold() == clean_current:
-            self.profile_mode_label.setText("CUENTA MICROSOFT (ONLINE)")
+            self.profile_mode_label.setText("ONLINE:")
             self.username.setReadOnly(True)
             self.login_button.setText("◉  Cerrar sesion")
             self.login_button.setToolTip(f"Cerrar sesion de {saved_premium.username}")
         else:
-            self.profile_mode_label.setText("PERFIL OFFLINE")
+            self.profile_mode_label.setText("USUARIO:")
             self.username.setReadOnly(False)
             self.login_button.setText("◉  Iniciar sesion")
             self.login_button.setToolTip("Iniciar sesion con Microsoft")
@@ -1151,30 +1390,41 @@ class MainWindow(QMainWindow):
         if username:
             self.username.setText(username)
             self._update_account_indicator(username)
-            self.status.setText(f"Sesion Microsoft activa (Online): {username}")
+            self.status.setText("")
+
+    def _open_fixner_directory(self) -> None:
+        self.game_directory.mkdir(parents=True, exist_ok=True)
+        if os.name == "nt":
+            os.startfile(str(self.game_directory))
+        else:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.game_directory)))
+
+    def _on_memory_changed(self, value: int) -> None:
+        settings_data = load_json(LAUNCHER_SETTINGS_FILE, {})
+        if not isinstance(settings_data, dict):
+            settings_data = {}
+        settings_data["memory_mb"] = int(value)
+        save_json(LAUNCHER_SETTINGS_FILE, settings_data)
+
+    def _show_play_page(self) -> None:
+        if hasattr(self, "pages"):
+            self.pages.setCurrentIndex(0)
+            self.section_label.setText("PLAY")
+            self.settings_button.setText(" Ajustes")
+            self.settings_button.setIcon(self._build_gear_icon())
+            self.settings_button.setToolTip("Cambiar al apartado de ajustes")
 
     def _open_settings(self) -> None:
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Ajustes del launcher")
-        dialog.setMinimumWidth(460)
-        layout = QVBoxLayout(dialog)
-        layout.addWidget(QLabel("Directorio de juego", objectName="Muted"))
-        directory = QLineEdit(str(self.game_directory))
-        directory.setReadOnly(True)
-        layout.addWidget(directory)
-        layout.addWidget(QLabel("Memoria RAM predeterminada", objectName="Muted"))
-        memory = QSpinBox()
-        memory.setRange(512, 32768)
-        memory.setSingleStep(512)
-        memory.setValue(self.memory.value())
-        memory.setSuffix(" MB")
-        layout.addWidget(memory)
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        buttons.rejected.connect(dialog.reject)
-        buttons.accepted.connect(lambda: dialog.accept())
-        layout.addWidget(buttons)
-        dialog.exec()
-        self.memory.setValue(memory.value())
+        if not hasattr(self, "pages"):
+            return
+        if self.pages.currentIndex() == 1:
+            self._show_play_page()
+        else:
+            self.pages.setCurrentIndex(1)
+            self.section_label.setText("SETTINGS")
+            self.settings_button.setText(" Inicio")
+            self.settings_button.setIcon(self._build_play_icon())
+            self.settings_button.setToolTip("Volver a la pantalla principal")
 
     def _set_installing_state(self, installing: bool, tooltip: str = "") -> None:
         if hasattr(self, "play_button"):
@@ -1201,6 +1451,7 @@ class MainWindow(QMainWindow):
         if self.worker and self.worker.isRunning():
             self.status.setText("Ya hay una operacion en curso...")
             return
+        self._show_play_page()
         self._installing_version = version
         self._installing_variant = variant
         self.hero_title.setText(f"MINECRAFT {version}")
@@ -1267,7 +1518,14 @@ class MainWindow(QMainWindow):
         entry = next((item for item in self.installed if item["id"] == version_id), None)
         if QMessageBox.question(self, "Eliminar instalacion", f"Eliminar {version_id}?") != QMessageBox.StandardButton.Yes:
             return
-        shutil.rmtree(self.game_directory / "versions" / version_id, ignore_errors=True)
+        if not self.manager.delete_installation(version_id):
+            QMessageBox.warning(
+                self,
+                "Eliminar instalacion",
+                f"No se pudo eliminar {version_id} por completo. Cierra Minecraft si esta abierto e intentalo de nuevo.",
+            )
+            self.refresh_library()
+            return
         if entry and entry["variant"] == "Sodium":
             mods_dir = self.game_directory / "mods" / entry["base"]
             if mods_dir.exists():

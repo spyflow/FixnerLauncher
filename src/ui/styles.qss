@@ -1,5 +1,5 @@
 QMainWindow, QWidget { background: #11191A; color: #F2F4F7; font-family: "Segoe UI", Arial, sans-serif; }
-QFrame#RootContainer { background: #11191A; border: 1px solid #263032; }
+QFrame#RootContainer, QDialog#RootContainer { background: #11191A; border: 1px solid #263032; }
 QFrame#WindowTitleBar { background: #11191A; border: none; }
 QLabel#WindowTitleLabel { color: #F2F4F7; font-family: "Segoe UI", Arial, sans-serif; font-size: 12px; background: transparent; }
 QFrame#Sidebar, QFrame#Panel, QFrame#Hero, QFrame#Details { background: #192122; border: 2px solid #394244; border-radius: 0px; }
@@ -44,8 +44,8 @@ QMenu::item:selected { background: #555555; color: #FFFFA0; }
 QListWidget { background: #11141A; border: 1px solid #232630; border-radius: 9px; padding: 6px; }
 QListWidget::item { padding: 12px; border-radius: 7px; }
 QListWidget::item:selected { background: #1E5F50; }
-QProgressBar { background: #242C2D; border: 1px solid #454E50; border-radius: 0px; height: 7px; }
-QProgressBar::chunk { background: #41D6A4; border-radius: 0px; }
+QProgressBar { background: rgba(14, 21, 23, 215); border: 1px solid #E2E8F0; border-radius: 0px; height: 9px; }
+QProgressBar::chunk { background: #F8FAFC; border-radius: 0px; }
 QCheckBox { color: #E0E0E0; font-family: "Segoe UI", Arial, sans-serif; font-size: 13px; font-weight: 600; spacing: 8px; padding: 4px 0px; }
 QCheckBox::indicator { width: 18px; height: 18px; background: #242C2D; border: 2px solid #7D7D7D; }
 QCheckBox::indicator:hover { border-color: #FFFFA0; }

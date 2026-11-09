@@ -10,7 +10,7 @@ from PySide6.QtCore import QCoreApplication, QEvent, QTimer
 from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPixmap, QPixmapCache
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
-from config.settings import APP_VERSION, LAUNCHER_SETTINGS_FILE, load_json, save_json
+from config.settings import APP_VERSION, LAUNCHER_SETTINGS_FILE, get_resource_path, load_json, save_json
 from core.updater import SemVer
 from src.ui.main_window import MainWindow
 from src.workers.tasks import GameCrashMonitorWorker
@@ -86,7 +86,12 @@ class AppController:
 
     @staticmethod
     def _build_tray_icon() -> QIcon:
-        """Genera un icono ligero sin depender de un asset externo."""
+        """Carga el icono oficial (assets/fixner.ico); si falta, genera uno ligero de respaldo."""
+        icon_path = get_resource_path("assets/fixner.ico")
+        if icon_path.exists():
+            icon = QIcon(str(icon_path))
+            if not icon.isNull():
+                return icon
         pixmap = QPixmap(32, 32)
         pixmap.fill(QColor("#11191A"))
         painter = QPainter(pixmap)

@@ -104,15 +104,73 @@ public class OptiFineBridge {
         optifine_version: dict[str, Any],
         progress_callback: ProgressCallback | None,
     ) -> Path:
-        vanilla_path = self.game_directory / "versions" / minecraft_version
-        if not vanilla_path.exists():
-            self.minecraft_manager.install_version(minecraft_version, progress_callback)
+        """Instala OptiFine con verificacion final; si falla revierte lo creado en esta operacion."""
+        versions_dir = self.game_directory / "versions"
+        vanilla_was_complete = self.minecraft_manager.is_installation_complete(minecraft_version)
+        existing_profiles = (
+            {path.name for path in versions_dir.glob(f"{minecraft_version}-OptiFine*")}
+            if versions_dir.exists()
+            else set()
+        )
+        try:
+            result = self._install_version_steps(minecraft_version, optifine_version, progress_callback)
+            new_profiles = [
+                path.name
+                for path in versions_dir.glob(f"{minecraft_version}-OptiFine*")
+                if path.is_dir()
+            ]
+            if not new_profiles:
+                raise RuntimeError("OptiFine no genero ningun perfil de version.")
+            problems: list[str] = []
+            for profile_id in new_profiles:
+                profile_problems = self.minecraft_manager.verify_installation(profile_id)
+                if profile_problems and profile_id not in existing_profiles:
+                    problems.extend(profile_problems)
+            if problems:
+                raise RuntimeError("La instalacion de OptiFine quedo incompleta: " + ", ".join(problems[:5]))
+            return result
+        except Exception:
+            self.logger.error("Instalacion de OptiFine %s fallida; revirtiendo cambios parciales", minecraft_version)
+            if versions_dir.exists():
+                for path in versions_dir.glob(f"{minecraft_version}-OptiFine*"):
+                    if path.name not in existing_profiles:
+                        self.minecraft_manager.delete_installation(path.name)
+            if not vanilla_was_complete:
+                self.minecraft_manager.delete_installation(minecraft_version)
+            raise
+
+    def _install_version_steps(
+        self,
+        minecraft_version: str,
+        optifine_version: dict[str, Any],
+        progress_callback: ProgressCallback | None,
+    ) -> Path:
+        base_start = 0.0
+        if not self.minecraft_manager.is_installation_complete(minecraft_version):
+            self.minecraft_manager.install_version(
+                minecraft_version,
+                (lambda msg, pct: progress_callback(msg, pct * 0.75)) if progress_callback else None,
+            )
+            base_start = 75.0
 
         download_url = self._download_url(minecraft_version, optifine_version)
         filename = str(optifine_version.get("filename", "OptiFine-installer.jar"))
         with tempfile.TemporaryDirectory(prefix="fixner-optifine-") as temporary_directory:
             installer = Path(temporary_directory) / filename
-            self._download(download_url, installer, progress_callback)
+            self._download(
+                download_url,
+                installer,
+                (
+                    lambda msg, pct: progress_callback(
+                        msg,
+                        base_start + (pct / 100.0) * (90.0 - base_start),
+                    )
+                )
+                if progress_callback
+                else None,
+            )
+            if progress_callback:
+                progress_callback("Ejecutando instalador OptiFine · 92%", 92.0)
             java_path = self.java_manager.ensure_runtime(minecraft_version)
             self._run_headless_bridge(java_path, installer, Path(temporary_directory), minecraft_version)
             self._ensure_profile_for_legacy(
@@ -121,6 +179,8 @@ public class OptiFineBridge {
                 installer,
             )
             self._sync_inherited_version_assets(minecraft_version)
+            if progress_callback:
+                progress_callback("OptiFine instalado correctamente · 100%", 100.0)
         self.logger.info("OptiFine instalado para Minecraft %s", minecraft_version)
         return self.game_directory / "versions"
 
@@ -322,8 +382,16 @@ public class OptiFineBridge {
                             downloaded += len(chunk)
                             if progress_callback and total:
                                 progress_callback("Descargando OptiFine", downloaded * 100 / total)
+                if total and downloaded != total:
+                    raise requests.ConnectionError(f"Descarga incompleta ({downloaded}/{total} bytes)")
+                if downloaded == 0:
+                    raise requests.ConnectionError("Descarga vacia")
                 return
             except requests.RequestException as error:
                 last_error = error
+                try:
+                    destination.unlink(missing_ok=True)
+                except OSError:
+                    pass
                 self.logger.warning("Descarga OptiFine fallida (intento %d/3): %s", attempt + 1, error)
         raise RuntimeError(f"No se pudo descargar OptiFine tras 3 intentos: {last_error}")
