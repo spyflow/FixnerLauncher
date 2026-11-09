@@ -135,20 +135,82 @@ class SodiumManager:
         sodium_version: dict[str, Any],
         progress_callback: ProgressCallback | None,
     ) -> Path:
-        # 1. Asegurar que la version Vanilla base este instalada
-        vanilla_path = self.game_directory / "versions" / minecraft_version
-        if not vanilla_path.exists():
-            self.minecraft_manager.install_version(minecraft_version, progress_callback)
+        """Instala con verificacion final; si algo falla revierte lo creado en esta operacion."""
+        versions_dir = self.game_directory / "versions"
+        vanilla_was_complete = self.minecraft_manager.is_installation_complete(minecraft_version)
+        existing_profiles = {path.name for path in versions_dir.glob(f"fabric-loader-*-{minecraft_version}")} if versions_dir.exists() else set()
+        mods_dir = self.get_version_mods_directory(minecraft_version)
+        existing_mods = {path.name for path in mods_dir.glob("sodium*.jar")}
+        try:
+            profile_path = self._install_version_steps(minecraft_version, sodium_version, progress_callback)
+            profile_id = profile_path.name
+            problems = self.minecraft_manager.verify_installation(profile_id)
+            sodium_jars = [path for path in mods_dir.glob("sodium*.jar") if path.is_file() and path.stat().st_size > 0]
+            if not sodium_jars:
+                problems.append("falta el mod de Sodium")
+            if problems:
+                raise RuntimeError(
+                    "La instalacion de Sodium quedo incompleta: " + ", ".join(problems[:5])
+                )
+            return profile_path
+        except Exception:
+            self.logger.error("Instalacion de Sodium %s fallida; revirtiendo cambios parciales", minecraft_version)
+            if versions_dir.exists():
+                for path in versions_dir.glob(f"fabric-loader-*-{minecraft_version}"):
+                    if path.name not in existing_profiles:
+                        self.minecraft_manager.delete_installation(path.name)
+            for path in mods_dir.glob("sodium*.jar"):
+                if path.name not in existing_mods or path.stat().st_size == 0:
+                    try:
+                        path.unlink()
+                    except OSError:
+                        pass
+            try:
+                if not any(mods_dir.iterdir()):
+                    mods_dir.rmdir()
+            except OSError:
+                pass
+            if not vanilla_was_complete:
+                self.minecraft_manager.delete_installation(minecraft_version)
+            raise
+
+    def _install_version_steps(
+        self,
+        minecraft_version: str,
+        sodium_version: dict[str, Any],
+        progress_callback: ProgressCallback | None,
+    ) -> Path:
+        # 1. Asegurar que la version Vanilla base este completamente instalada y verificada
+        base_start = 0.0
+        if not self.minecraft_manager.is_installation_complete(minecraft_version):
+            self.minecraft_manager.install_version(
+                minecraft_version,
+                (lambda msg, pct: progress_callback(msg, pct * 0.72)) if progress_callback else None,
+            )
+            base_start = 72.0
 
         # 2. Asegurar el runtime de Java para esta version
+        java_pct = max(base_start + 3.0, 15.0)
         if progress_callback:
-            progress_callback("Verificando runtime de Java...", 15.0)
+            progress_callback(f"Verificando runtime de Java · {int(java_pct)}%", java_pct)
         self.java_manager.ensure_runtime(minecraft_version)
 
-        # 3. Instalar el perfil de Fabric Loader y sus librerias
+        # 3. Instalar el perfil de Fabric Loader y sus librerias (peso igual por libreria)
+        fabric_start = max(base_start + 6.0, 30.0)
+        fabric_end = 90.0
         if progress_callback:
-            progress_callback("Instalando Fabric Loader...", 35.0)
-        profile_id = self._install_fabric_loader(minecraft_version)
+            progress_callback(f"Instalando Fabric Loader · {int(fabric_start)}%", fabric_start)
+        profile_id = self._install_fabric_loader(
+            minecraft_version,
+            (
+                lambda msg, pct: progress_callback(
+                    msg,
+                    fabric_start + (pct / 100.0) * (fabric_end - fabric_start),
+                )
+            )
+            if progress_callback
+            else None,
+        )
 
         # 4. Descargar el mod Sodium en la carpeta aislada FIXNER_DIR/mods/<minecraft_version>/
         mods_dir = self.get_version_mods_directory(minecraft_version)
@@ -168,9 +230,15 @@ class SodiumManager:
             download_url = versions[0]["url"]
 
         destination = mods_dir / filename
-        self._download(download_url, destination, progress_callback)
+        self._download(
+            download_url,
+            destination,
+            (lambda msg, pct: progress_callback(msg, 90.0 + (pct / 100.0) * 10.0))
+            if progress_callback
+            else None,
+        )
         if progress_callback:
-            progress_callback("Sodium instalado correctamente", 100.0)
+            progress_callback("Sodium instalado correctamente · 100%", 100.0)
         self.logger.info(
             "Sodium (%s) instalado con perfil %s en %s",
             filename,
@@ -179,7 +247,11 @@ class SodiumManager:
         )
         return self.game_directory / "versions" / profile_id
 
-    def _install_fabric_loader(self, minecraft_version: str) -> str:
+    def _install_fabric_loader(
+        self,
+        minecraft_version: str,
+        progress_callback: ProgressCallback | None = None,
+    ) -> str:
         """Obtiene e instala el perfil oficial de Fabric Loader y descarga sus librerias Maven."""
         loader_resp = requests.get(
             FABRIC_META_LOADERS_URL.format(version=minecraft_version),
@@ -217,7 +289,11 @@ class SodiumManager:
         profile_json_path.write_text(json.dumps(profile_data, indent=2), encoding="utf-8")
 
         # Sincronizar jar base, natives y librerias de Fabric
-        self.minecraft_manager._prepare_inherited_version(profile_id)
+        missing = self.minecraft_manager._prepare_inherited_version(profile_id, progress_callback)
+        if missing:
+            raise RuntimeError(
+                "No se pudieron descargar librerias de Fabric: " + ", ".join(missing[:5])
+            )
         return profile_id
 
     def _download(
@@ -245,9 +321,20 @@ class SodiumManager:
                             output.write(chunk)
                             downloaded += len(chunk)
                             if progress_callback and total:
-                                progress_callback("Descargando Sodium...", 50.0 + (downloaded * 50.0 / total))
+                                pct = (downloaded * 100.0) / total
+                                progress_callback(f"Descargando Sodium ({destination.name})...", pct)
+                if total and downloaded != total:
+                    raise requests.ConnectionError(
+                        f"Descarga incompleta ({downloaded}/{total} bytes)"
+                    )
+                if downloaded == 0:
+                    raise requests.ConnectionError("Descarga vacia")
                 return
             except requests.RequestException as error:
                 last_error = error
+                try:
+                    destination.unlink(missing_ok=True)
+                except OSError:
+                    pass
                 self.logger.warning("Descarga de Sodium fallida (intento %d/3): %s", attempt + 1, error)
         raise RuntimeError(f"No se pudo descargar Sodium tras 3 intentos: {last_error}")
