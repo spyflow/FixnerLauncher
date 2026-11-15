@@ -1,7 +1,7 @@
 # FixnerLauncher
 
 **FixnerLauncher** es un lanzador ligero, rápido y completamente aislado para **Minecraft: Java Edition**, desarrollado en Python con **PySide6 (Qt6)**.
-Permite gestionar e iniciar instalaciones **Vanilla**, **OptiFine** y **Sodium (Fabric)** sin interferir con la carpeta `.minecraft` oficial, gestionando automáticamente el runtime de Java adecuado para cada generación del juego (desde Java 8 hasta Java 25).
+Permite gestionar e iniciar instalaciones **Vanilla**, **OptiFine**, **Sodium (Fabric)** y la variante experimental **Dosium (Fabric)** sin interferir con la carpeta `.minecraft` oficial, gestionando automáticamente el runtime de Java adecuado para cada generación del juego (desde Java 8 hasta Java 25).
 
 ---
 
@@ -13,6 +13,8 @@ Permite gestionar e iniciar instalaciones **Vanilla**, **OptiFine** y **Sodium (
   - **Vanilla**: Descarga directa desde los manifiestos oficiales de Mojang.
   - **OptiFine**: Descarga e instalación desatendida (incluyendo soporte nativo para versiones clásicas como `1.8.9` y modernas).
   - **Sodium (Fabric)**: Instala automáticamente el perfil de **Fabric Loader**, sus librerías Maven y el mod **Sodium** desde Modrinth en una carpeta de mods exclusiva por versión (`mods/<version_mc>/`), permitiendo coexistir múltiples versiones de Minecraft con mods sin conflictos (`-Dfabric.addMods`).
+- **Variante experimental**:
+  - **Dosium (Fabric)**: Implementación optimizada experimental exclusiva para **Minecraft 1.20.4**. Obtiene automáticamente el mod desde los *releases* oficiales de GitHub ([spyflow/Dosium](https://github.com/spyflow/Dosium/releases/latest)) junto a su dependencia obligatoria **Fabric API** desde Modrinth. Sus mods se gestionan de forma totalmente aislada en `mods/<version>.dosium/` mediante `-Dfabric.addMods`, permitiendo su coexistencia independiente junto a Sodium en la misma versión base (1.20.4) sin mezclar archivos ni alterar perfiles al desinstalar. Incluye advertencias visuales de estabilidad previa instalación.
 - **Gestión automática de Java (Mojang Runtimes)**:
   Detecta el componente exacto requerido por cada versión (`jre-legacy` / Java 8, `java-runtime-alpha` / Java 16, `java-runtime-gamma` / Java 17, `java-runtime-delta` / Java 21 y `java-runtime-epsilon` / Java 25) y lo descarga automáticamente si no está presente.
 - **Autenticación Microsoft (Online) y Modo Offline**:
@@ -34,11 +36,12 @@ FixnerLauncher/
 │   └── settings.py         # Rutas aisladas, versión única y constantes globales
 ├── core/
 │   ├── auth_manager.py     # Autenticación OAuth2 Microsoft, keyring y perfiles offline
+│   ├── dosium_manager.py   # Descarga de GitHub Releases (Dosium) y Fabric API aislada
 │   ├── java_manager.py     # Selección e instalación de runtimes Java de Mojang
 │   ├── minecraft_manager.py# Instalación y lanzamiento de versiones y librerías
 │   ├── optifine_manager.py # Catálogo, extracción e instalación de OptiFine
-│   ├── runner.py           # Fachada de ejecución para Vanilla, OptiFine y Sodium
-│   └── sodium_manager.py   # Integración con Fabric Meta API y Modrinth (Sodium)
+│   ├── runner.py           # Fachada de ejecución para Vanilla, OptiFine, Sodium y Dosium
+│   └── sodium_manager.py   # Integración con Fabric Meta API, Modrinth (Sodium) y Fabric API
 ├── src/
 │   ├── controller.py       # Controlador principal, System Tray y monitor de proceso
 │   ├── ui/
