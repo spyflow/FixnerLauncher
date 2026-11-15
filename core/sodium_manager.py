@@ -21,6 +21,7 @@ ProgressCallback = Callable[[str, float], None]
 FABRIC_META_LOADERS_URL = "https://meta.fabricmc.net/v2/versions/loader/{version}"
 FABRIC_META_PROFILE_URL = "https://meta.fabricmc.net/v2/versions/loader/{version}/{loader}/profile/json"
 MODRINTH_SODIUM_VERSIONS_URL = "https://api.modrinth.com/v2/project/sodium/version"
+MODRINTH_FABRIC_API_URL = "https://api.modrinth.com/v2/project/fabric-api/version"
 USER_AGENT = f"{APP_NAME}/{APP_VERSION} (Spyflow)"
 
 
@@ -233,10 +234,20 @@ class SodiumManager:
         self._download(
             download_url,
             destination,
-            (lambda msg, pct: progress_callback(msg, 90.0 + (pct / 100.0) * 10.0))
+            (lambda msg, pct: progress_callback(msg, 90.0 + (pct / 100.0) * 5.0))
             if progress_callback
             else None,
         )
+
+        # 5. Asegurar Fabric API en la carpeta de mods (requerido por Sodium en versiones modernas)
+        self._ensure_fabric_api(
+            minecraft_version,
+            mods_dir,
+            (lambda msg, pct: progress_callback(msg, 95.0 + (pct / 100.0) * 5.0))
+            if progress_callback
+            else None,
+        )
+
         if progress_callback:
             progress_callback("Sodium instalado correctamente · 100%", 100.0)
         self.logger.info(
@@ -246,6 +257,47 @@ class SodiumManager:
             mods_dir,
         )
         return self.game_directory / "versions" / profile_id
+
+    def _ensure_fabric_api(
+        self,
+        minecraft_version: str,
+        mods_dir: Path,
+        progress_callback: ProgressCallback | None = None,
+    ) -> None:
+        """Descarga e instala la version compatible de Fabric API si no esta presente en la carpeta de mods."""
+        if any(mods_dir.glob("fabric-api*.jar")):
+            return
+        if progress_callback:
+            progress_callback("Consultando Fabric API...", 10.0)
+        try:
+            resp = requests.get(
+                MODRINTH_FABRIC_API_URL,
+                params={
+                    "loaders": json.dumps(["fabric"]),
+                    "game_versions": json.dumps([minecraft_version]),
+                },
+                headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+                timeout=25,
+            )
+            resp.raise_for_status()
+            versions = resp.json()
+            if not isinstance(versions, list) or not versions:
+                self.logger.warning("No se encontraron versiones de Fabric API para %s en Modrinth", minecraft_version)
+                return
+            files = versions[0].get("files", [])
+            primary_file = next((f for f in files if f.get("primary")), files[0] if files else None)
+            if not primary_file:
+                return
+            api_filename = str(primary_file.get("filename", f"fabric-api-{minecraft_version}.jar"))
+            api_url = str(primary_file.get("url", ""))
+            if not api_url:
+                return
+            if progress_callback:
+                progress_callback(f"Descargando {api_filename}...", 50.0)
+            self._download(api_url, mods_dir / api_filename, progress_callback)
+            self.logger.info("Fabric API instalado en %s: %s", mods_dir, api_filename)
+        except Exception as exc:
+            self.logger.warning("No se pudo descargar Fabric API automaticamente: %s", exc)
 
     def _install_fabric_loader(
         self,

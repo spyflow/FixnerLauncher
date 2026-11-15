@@ -22,6 +22,7 @@ from core.auth_manager import AuthManager
 from core.minecraft_manager import MinecraftManager
 from core.optifine_manager import OptiFineManager
 from core.sodium_manager import SodiumManager
+from core.dosium_manager import DosiumManager
 from core.runner import MinecraftRunner
 from core.updater import ReleaseInfo, SemVer, UpdateManager
 from config.settings import (
@@ -254,15 +255,19 @@ class AddVersionDialog(QDialog):
         sodium: SodiumManager,
         parent: QWidget,
         initial_variant: str = "Vanilla",
+        dosium: DosiumManager | None = None,
     ) -> None:
         super().__init__(parent)
         self.manager = manager
         self.optifine = optifine
         self.sodium = sodium
+        self.dosium = dosium
         self.worker: TaskThread | None = None
         self._query_token: int = 0
         self.optifine_versions: list[dict[str, Any]] = []
         self.sodium_versions: list[dict[str, Any]] = []
+        self.dosium_versions: list[dict[str, Any]] = []
+        self.all_versions: list[dict[str, Any]] = []
         self.setObjectName("RootContainer")
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
         self.setWindowTitle("Agregar una version")
@@ -289,7 +294,7 @@ class AddVersionDialog(QDialog):
         layout.addWidget(title)
         layout.addWidget(QLabel("La version se instalara en el directorio aislado.", objectName="Muted"))
         self.variant = QComboBox()
-        self.variant.addItems(["Vanilla", "OptiFine", "Sodium"])
+        self.variant.addItems(["Vanilla", "OptiFine", "Sodium", "Dosium"])
         self.variant.setCurrentText(initial_variant)
         self.variant.currentTextChanged.connect(self._variant_changed)
         layout.addWidget(QLabel("Variante", objectName="Muted"))
@@ -299,14 +304,30 @@ class AddVersionDialog(QDialog):
         self.version.setEnabled(False)
         self.version.currentTextChanged.connect(self._base_changed)
         layout.addWidget(self.version)
-        has_edition = initial_variant in ("OptiFine", "Sodium")
-        label_text = "Edicion Sodium (Fabric)" if initial_variant == "Sodium" else "Edicion OptiFine"
+        has_edition = initial_variant in ("OptiFine", "Sodium", "Dosium")
+        if initial_variant == "Sodium":
+            label_text = "Edicion Sodium (Fabric)"
+        elif initial_variant == "Dosium":
+            label_text = "Edicion Dosium (Fabric)"
+        else:
+            label_text = "Edicion OptiFine"
         self.edition_label = QLabel(label_text, objectName="Muted")
         self.edition_label.setVisible(has_edition)
         layout.addWidget(self.edition_label)
         self.edition = QComboBox()
         self.edition.setVisible(has_edition)
         layout.addWidget(self.edition)
+
+        self.experimental_warning = QLabel(
+            "⚠ Advertencia: Dosium es una variante experimental basada en Vulkan.\n"
+            "Puede presentar inestabilidad, fallos visuales o incompatibilidad con otros mods.",
+            objectName="Muted",
+        )
+        self.experimental_warning.setStyleSheet("color: #F5C242; font-size: 11px; font-weight: 600;")
+        self.experimental_warning.setWordWrap(True)
+        self.experimental_warning.setVisible(initial_variant == "Dosium")
+        layout.addWidget(self.experimental_warning)
+
         self.status = QLabel("Consultando catalogo oficial...", objectName="Muted")
         layout.addWidget(self.status)
         layout.addStretch()
@@ -325,24 +346,57 @@ class AddVersionDialog(QDialog):
         self.worker.start()
 
     def _catalog_loaded(self, versions: list[dict[str, Any]]) -> None:
-        self.version.blockSignals(True)
-        self.version.addItems([str(item["id"]) for item in versions])
-        self.version.blockSignals(False)
+        self.all_versions = versions
         self.version.setEnabled(True)
+        self._update_versions_for_variant(self.variant.currentText())
+
+    def _update_versions_for_variant(self, variant: str) -> None:
+        self.version.blockSignals(True)
+        self.version.clear()
+        if variant == "Dosium":
+            allowed = ["1.20.4"]
+            filtered = [str(item["id"]) for item in self.all_versions if str(item.get("id", "")) in allowed]
+            if not filtered:
+                filtered = allowed
+            self.version.addItems(filtered)
+        else:
+            self.version.addItems([str(item["id"]) for item in self.all_versions])
+        self.version.blockSignals(False)
+
         current_variant = self.variant.currentText()
-        if current_variant in ("OptiFine", "Sodium"):
+        if current_variant in ("OptiFine", "Sodium", "Dosium"):
             self._variant_changed(current_variant)
         else:
-            self.add.setEnabled(bool(versions))
-            self.status.setText(f"{len(versions)} versiones disponibles")
+            self.add.setEnabled(bool(self.all_versions))
+            self.status.setText(f"{len(self.all_versions)} versiones disponibles")
 
     def _variant_changed(self, variant: str) -> None:
         self._query_token += 1
-        has_edition = variant in ("OptiFine", "Sodium")
+        has_edition = variant in ("OptiFine", "Sodium", "Dosium")
         self.edition_label.setVisible(has_edition)
         self.edition.setVisible(has_edition)
+        if hasattr(self, "experimental_warning"):
+            self.experimental_warning.setVisible(variant == "Dosium")
         self.optifine_versions = []
         self.sodium_versions = []
+        self.dosium_versions = []
+
+        # Asegurar que la lista de versiones base se ajuste (ej. Dosium solo 1.20.4)
+        if self.all_versions:
+            self.version.blockSignals(True)
+            current_base = self.version.currentText()
+            self.version.clear()
+            if variant == "Dosium":
+                self.version.addItems(["1.20.4"])
+            else:
+                self.version.addItems([str(item["id"]) for item in self.all_versions])
+            idx = self.version.findText(current_base)
+            if idx >= 0:
+                self.version.setCurrentIndex(idx)
+            elif self.version.count() > 0:
+                self.version.setCurrentIndex(0)
+            self.version.blockSignals(False)
+
         base_version = self.version.currentText()
         if variant == "OptiFine":
             self.edition_label.setText("Edicion OptiFine")
@@ -352,6 +406,10 @@ class AddVersionDialog(QDialog):
             self.edition_label.setText("Edicion Sodium (Fabric)")
             if base_version:
                 self._load_sodium(base_version)
+        elif variant == "Dosium":
+            self.edition_label.setText("Edicion Dosium (Fabric)")
+            if base_version:
+                self._load_dosium(base_version)
         else:
             self.add.setEnabled(bool(base_version))
             self.status.setText("Selecciona una version para agregar Vanilla.")
@@ -362,6 +420,8 @@ class AddVersionDialog(QDialog):
             self._load_optifine(version)
         elif variant == "Sodium" and version:
             self._load_sodium(version)
+        elif variant == "Dosium" and version:
+            self._load_dosium(version)
 
     def _load_optifine(self, version: str) -> None:
         self._query_token += 1
@@ -418,9 +478,56 @@ class AddVersionDialog(QDialog):
         else:
             self.status.setText(f"No hay Sodium disponible para Minecraft {mc_version}.")
 
+    def _load_dosium(self, version: str) -> None:
+        self._query_token += 1
+        token = self._query_token
+        self.add.setEnabled(False)
+        self.edition.clear()
+        if not self.dosium:
+            self.status.setText("Gestor de Dosium no disponible.")
+            return
+        self.status.setText("Consultando releases de Dosium en GitHub...")
+        worker = TaskThread(lambda: self.dosium.list_versions(version))
+        worker.succeeded.connect(lambda versions: self._dosium_loaded(token, version, versions))
+        worker.failed.connect(
+            lambda error: self.status.setText(f"Dosium no disponible: {error}")
+            if token == self._query_token
+            else None
+        )
+        self.worker = worker
+        worker.start()
+
+    def _dosium_loaded(self, token: int, mc_version: str, versions: list[dict[str, Any]]) -> None:
+        if token != self._query_token:
+            return
+        self.dosium_versions = versions
+        self.edition.clear()
+        self.edition.addItems([str(item.get("filename", item.get("name", "Dosium"))) for item in versions])
+        self.add.setEnabled(bool(versions))
+        if versions:
+            self.status.setText(
+                f"{len(versions)} version(es) de Dosium · Carpeta aislada: mods/{mc_version}.dosium/"
+            )
+        else:
+            self.status.setText(f"No hay Dosium disponible para Minecraft {mc_version}.")
+
     def _install(self) -> None:
         version = self.version.currentText()
         variant = self.variant.currentText()
+        if variant == "Dosium":
+            confirm = QMessageBox.warning(
+                self,
+                "Instalación experimental (Dosium)",
+                "Dosium es una variante experimental basada en Vulkan.\n\n"
+                "• Puede experimentar fallos de renderizado o cierres inesperados.\n"
+                "• Los mods que dependen directamente de OpenGL/Sodium estándar podrían ser incompatibles.\n\n"
+                "¿Deseas continuar con la instalación?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if confirm != QMessageBox.StandardButton.Yes:
+                return
+
         if variant == "OptiFine":
             index = self.edition.currentIndex()
             if 0 <= index < len(self.optifine_versions):
@@ -429,6 +536,10 @@ class AddVersionDialog(QDialog):
             index = self.edition.currentIndex()
             if 0 <= index < len(self.sodium_versions):
                 self.install_requested.emit(version, "Sodium", self.sodium_versions[index])
+        elif variant == "Dosium":
+            index = self.edition.currentIndex()
+            if 0 <= index < len(self.dosium_versions):
+                self.install_requested.emit(version, "Dosium", self.dosium_versions[index])
         else:
             self.install_requested.emit(version, "Vanilla", {})
         self.accept()
@@ -686,6 +797,7 @@ class MainWindow(QMainWindow):
         java_mgr = JavaManager(game_directory, logger)
         self.optifine = OptiFineManager(game_directory, self.manager, java_mgr, logger)
         self.sodium = SodiumManager(game_directory, self.manager, java_mgr, logger)
+        self.dosium = DosiumManager(game_directory, self.manager, java_mgr, logger)
         self.updater = UpdateManager(game_directory, logger)
         self.available_update: ReleaseInfo | None = None
         self._update_check_worker: TaskThread | None = None
@@ -959,7 +1071,7 @@ class MainWindow(QMainWindow):
         self.search = QLineEdit()
         self.search.setVisible(False)
         self.filter = QComboBox()
-        self.filter.addItems(["Todas", "Vanilla", "OptiFine", "Sodium"])
+        self.filter.addItems(["Todas", "Vanilla", "OptiFine", "Sodium", "Dosium"])
         self.filter.setVisible(False)
         self.version_list = QListWidget()
         self.version_list.setVisible(False)
@@ -1076,12 +1188,15 @@ class MainWindow(QMainWindow):
         vanilla = QAction("Vanilla oficial", menu)
         optifine = QAction("OptiFine", menu)
         sodium = QAction("Sodium (Fabric)", menu)
+        dosium = QAction("Dosium (Fabric)", menu)
         vanilla.triggered.connect(lambda: self._open_add_dialog("Vanilla"))
         optifine.triggered.connect(lambda: self._open_add_dialog("OptiFine"))
         sodium.triggered.connect(lambda: self._open_add_dialog("Sodium"))
+        dosium.triggered.connect(lambda: self._open_add_dialog("Dosium"))
         menu.addAction(vanilla)
         menu.addAction(optifine)
         menu.addAction(sodium)
+        menu.addAction(dosium)
         self.add_button.setMenu(menu)
 
     def refresh_library(
@@ -1124,13 +1239,26 @@ class MainWindow(QMainWindow):
                 variant = "OptiFine"
                 base = directory.name.split("-OptiFine", 1)[0]
             elif directory.name.startswith("fabric-loader-"):
-                variant = "Sodium"
                 profile_data = load_json(json_file, {})
                 base = (
                     str(profile_data.get("inheritsFrom", ""))
                     if isinstance(profile_data, dict) and profile_data.get("inheritsFrom")
                     else directory.name.rsplit("-", 1)[-1]
                 )
+                dosium_mods_dir = self.game_directory / "mods" / f"{base}.dosium"
+                standard_mods_dir = self.game_directory / "mods" / base
+                has_dosium = any(dosium_mods_dir.glob("dosium*.jar")) if dosium_mods_dir.exists() else False
+                has_sodium = any(standard_mods_dir.glob("sodium*.jar")) if standard_mods_dir.exists() else False
+
+                if has_dosium and has_sodium:
+                    # Ambas variantes estan instaladas compartiendo el loader Fabric
+                    entries.append({"id": directory.name, "base": base, "variant": "Sodium"})
+                    entries.append({"id": f"{directory.name}:dosium", "base": base, "variant": "Dosium"})
+                    continue
+                elif has_dosium:
+                    variant = "Dosium"
+                else:
+                    variant = "Sodium"
             else:
                 variant = "Vanilla"
                 base = directory.name
@@ -1258,13 +1386,19 @@ class MainWindow(QMainWindow):
         version_id = self._selected_id()
         entry = next((value for value in self.installed if value["id"] == version_id), None)
         base_version = ""
-        if entry and entry["variant"] == "Sodium":
+        variant = ""
+        if entry and entry["variant"] in ("Sodium", "Dosium"):
             base_version = entry["base"]
-        elif self._installing_variant == "Sodium" and self._installing_version:
+            variant = entry["variant"]
+        elif self._installing_variant in ("Sodium", "Dosium") and self._installing_version:
             base_version = self._installing_version
+            variant = self._installing_variant
         if not base_version:
             return
-        mods_dir = self.sodium.get_version_mods_directory(base_version)
+        if variant == "Dosium" and hasattr(self, "dosium") and self.dosium:
+            mods_dir = self.dosium.get_version_mods_directory(base_version)
+        else:
+            mods_dir = self.sodium.get_version_mods_directory(base_version)
         if os.name == "nt":
             os.startfile(str(mods_dir))
         else:
@@ -1280,11 +1414,12 @@ class MainWindow(QMainWindow):
                 self.selector.setFixedSize(310, 46)
             return
         self.hero_title.setText(f"MINECRAFT {entry['base']}")
-        if entry["variant"] == "Sodium":
+        if entry["variant"] in ("Sodium", "Dosium"):
             if hasattr(self, "mods_folder_button"):
                 self.selector.setFixedSize(258, 46)
+                folder_name = f"{entry['base']}.dosium" if entry["variant"] == "Dosium" else entry["base"]
                 self.mods_folder_button.setToolTip(
-                    f"Abrir carpeta de mods de Minecraft {entry['base']} (mods/{entry['base']})"
+                    f"Abrir carpeta de mods de Minecraft {entry['base']} (mods/{folder_name})"
                 )
                 self.mods_folder_button.setVisible(True)
         else:
@@ -1302,7 +1437,14 @@ class MainWindow(QMainWindow):
             self.detail_variant.setText(f"ID: {entry['id']}\nVariante: {entry['variant']}\nDirectorio aislado")
 
     def _open_add_dialog(self, variant: str = "Vanilla") -> None:
-        dialog = AddVersionDialog(self.manager, self.optifine, self.sodium, self, initial_variant=variant)
+        dialog = AddVersionDialog(
+            self.manager,
+            self.optifine,
+            self.sodium,
+            self,
+            initial_variant=variant,
+            dosium=self.dosium,
+        )
         dialog.install_requested.connect(self._install_new_version)
         dialog.exec()
 
@@ -1465,10 +1607,11 @@ class MainWindow(QMainWindow):
             self.selector.setCurrentIndex(0)
         self.selector.blockSignals(False)
         if hasattr(self, "mods_folder_button"):
-            if variant == "Sodium":
+            if variant in ("Sodium", "Dosium"):
                 self.selector.setFixedSize(258, 46)
+                folder_name = f"{version}.dosium" if variant == "Dosium" else version
                 self.mods_folder_button.setToolTip(
-                    f"Abrir carpeta de mods de Minecraft {version} (mods/{version})"
+                    f"Abrir carpeta de mods de Minecraft {version} (mods/{folder_name})"
                 )
                 self.mods_folder_button.setVisible(True)
             else:
@@ -1483,6 +1626,8 @@ class MainWindow(QMainWindow):
             task = lambda: self.optifine.install_version(version, variant_version, progress)
         elif variant == "Sodium":
             task = lambda: self.sodium.install_version(version, variant_version, progress)
+        elif variant == "Dosium":
+            task = lambda: self.dosium.install_version(version, variant_version, progress)
         else:
             task = lambda: self.manager.install_version(version, progress)
         self._run_task(task, lambda result: self._installation_done(version, variant, result))
@@ -1492,7 +1637,9 @@ class MainWindow(QMainWindow):
         self._installing_variant = ""
         self._set_installing_state(False)
         self.progress.setVisible(False)
-        if variant == "Sodium":
+        if variant == "Dosium":
+            self.status.setText(f"Dosium {version} instalado correctamente en mods/{version}.dosium/.")
+        elif variant == "Sodium":
             self.status.setText(f"Sodium {version} instalado correctamente en mods/{version}/.")
         else:
             self.status.setText(f"{variant} {version} instalada correctamente.")
@@ -1516,29 +1663,64 @@ class MainWindow(QMainWindow):
         if not version_id:
             return
         entry = next((item for item in self.installed if item["id"] == version_id), None)
-        if QMessageBox.question(self, "Eliminar instalacion", f"Eliminar {version_id}?") != QMessageBox.StandardButton.Yes:
+        if not entry:
             return
-        if not self.manager.delete_installation(version_id):
-            QMessageBox.warning(
-                self,
-                "Eliminar instalacion",
-                f"No se pudo eliminar {version_id} por completo. Cierra Minecraft si esta abierto e intentalo de nuevo.",
-            )
-            self.refresh_library()
+        display_name = f"{entry['variant']} {entry['base']}"
+        if QMessageBox.question(self, "Eliminar instalacion", f"¿Eliminar {display_name}?") != QMessageBox.StandardButton.Yes:
             return
-        if entry and entry["variant"] == "Sodium":
-            mods_dir = self.game_directory / "mods" / entry["base"]
-            if mods_dir.exists():
-                for jar in mods_dir.glob("sodium*.jar"):
+
+        variant = entry["variant"]
+        base_version = entry["base"]
+        actual_profile_id = version_id.split(":")[0]
+
+        # Verificar si la otra variante (Sodium o Dosium) aun esta instalada compartiendo el perfil Fabric
+        remaining_variant_installed = False
+        if variant == "Dosium":
+            standard_mods = self.game_directory / "mods" / base_version
+            remaining_variant_installed = any(standard_mods.glob("sodium*.jar")) if standard_mods.exists() else False
+        elif variant == "Sodium":
+            dosium_mods = self.game_directory / "mods" / f"{base_version}.dosium"
+            remaining_variant_installed = any(dosium_mods.glob("dosium*.jar")) if dosium_mods.exists() else False
+
+        # Solo borramos el perfil de Fabric si NO queda la otra variante instalada
+        if not remaining_variant_installed:
+            if not self.manager.delete_installation(actual_profile_id):
+                QMessageBox.warning(
+                    self,
+                    "Eliminar instalacion",
+                    f"No se pudo eliminar {actual_profile_id} por completo. Cierra Minecraft si esta abierto e intentalo de nuevo.",
+                )
+                self.refresh_library()
+                return
+
+        # Borrar la carpeta o mod especifico de esta variante
+        if variant == "Dosium":
+            dosium_dir = self.game_directory / "mods" / f"{base_version}.dosium"
+            if dosium_dir.exists():
+                shutil.rmtree(dosium_dir, ignore_errors=True)
+            # Limpiar posible jar residual en mods/<base>/ si existiera
+            legacy_dir = self.game_directory / "mods" / base_version
+            if legacy_dir.exists():
+                for jar in legacy_dir.glob("dosium*.jar"):
                     try:
                         jar.unlink()
                     except OSError:
                         pass
+        elif variant == "Sodium":
+            sodium_dir = self.game_directory / "mods" / base_version
+            if sodium_dir.exists():
+                for jar in sodium_dir.glob("sodium*.jar"):
+                    try:
+                        jar.unlink()
+                    except OSError:
+                        pass
+                # Si la carpeta quedo vacia de mods, eliminarla
                 try:
-                    if not any(mods_dir.iterdir()):
-                        mods_dir.rmdir()
+                    if not any(sodium_dir.iterdir()):
+                        sodium_dir.rmdir()
                 except OSError:
                     pass
+
         self.refresh_library()
 
     def _show_progress(self, status: str, value: float) -> None:

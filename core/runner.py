@@ -36,8 +36,13 @@ class MinecraftRunner:
         elif variant == "OptiFine":
             launch_id = self._resolve_optifine_id(version_id)
         elif variant == "Sodium":
-            launch_id = self._resolve_sodium_id(version_id)
+            launch_id = self._resolve_fabric_id(version_id, "Sodium")
             mods_dir = (self.minecraft_manager.game_directory / "mods" / version_id).resolve()
+            mods_dir.mkdir(parents=True, exist_ok=True)
+            extra_jvm_args.append(f"-Dfabric.addMods={mods_dir}")
+        elif variant == "Dosium":
+            launch_id = self._resolve_fabric_id(version_id, "Dosium")
+            mods_dir = (self.minecraft_manager.game_directory / "mods" / f"{version_id}.dosium").resolve()
             mods_dir.mkdir(parents=True, exist_ok=True)
             extra_jvm_args.append(f"-Dfabric.addMods={mods_dir}")
         else:
@@ -69,7 +74,7 @@ class MinecraftRunner:
             f"No hay una instalacion OptiFine para Minecraft {minecraft_version}"
         )
 
-    def _resolve_sodium_id(self, minecraft_version: str) -> str:
+    def _resolve_fabric_id(self, minecraft_version: str, variant: str = "Fabric") -> str:
         versions_directory = self.minecraft_manager.game_directory / "versions"
         for candidate in sorted(versions_directory.glob(f"fabric-loader-*-{minecraft_version}"), reverse=True):
             profile_path = candidate / f"{candidate.name}.json"
@@ -82,5 +87,8 @@ class MinecraftRunner:
             if profile.get("inheritsFrom") == minecraft_version:
                 return candidate.name
         raise FileNotFoundError(
-            f"No hay una instalacion Sodium (Fabric) para Minecraft {minecraft_version}"
+            f"No hay una instalacion {variant} (Fabric) para Minecraft {minecraft_version}"
         )
+
+    def _resolve_sodium_id(self, minecraft_version: str) -> str:
+        return self._resolve_fabric_id(minecraft_version, "Sodium")

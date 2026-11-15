@@ -1,7 +1,6 @@
 # FixnerLauncher
 
-**FixnerLauncher** es un lanzador ligero, rápido y completamente aislado para **Minecraft: Java Edition**, desarrollado en Python con **PySide6 (Qt6)** por **Spyflow**.
-
+**FixnerLauncher** es un lanzador ligero, rápido y completamente aislado para **Minecraft: Java Edition**, desarrollado en Python con **PySide6 (Qt6)**.
 Permite gestionar e iniciar instalaciones **Vanilla**, **OptiFine** y **Sodium (Fabric)** sin interferir con la carpeta `.minecraft` oficial, gestionando automáticamente el runtime de Java adecuado para cada generación del juego (desde Java 8 hasta Java 25).
 
 ---
